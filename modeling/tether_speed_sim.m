@@ -8,12 +8,13 @@ clc
 % everything is is feet
 
 % tether floor anchor points
-tether_pts = [2, 0, 0;
-              -2, 0, 0];
 % tether_pts = [2, 0, 0;
-%               -2, 0, 0;
-%               0, 2, 0;
-%               0, -2, 0];
+%               -2, 0, 0];
+tether_pts = [0,           2,           0;
+              2*cosd(210), 2*sind(210), 0;
+              2*cosd(330), 2*sind(330), 0;];
+
+
 
 % tallest
 % center of mass
@@ -29,7 +30,7 @@ mass = 200;
 
 % max allowable oscillation distance and frequency each direction
 x_A = COM_init_height*tand(10);
-x_f = 0;
+x_f = 1;
 y_A = COM_init_height*tand(10);
 y_f = 0;
 z_A = 0.82021; % 0.25 meters
@@ -40,7 +41,7 @@ COM_x = @(t) x_A*sin(2*pi*x_f*t);
 COM_y = @(t) y_A*sin(2*pi*y_f*t);
 COM_z = @(t) z_A*sin(2*pi*z_f*t);
 
-t = linspace(0, 5, 1000)';
+t = linspace(0, 2, 1000)';
 
 COM = [COM_x(t), COM_y(t), COM_z(t) + COM_init_height];
 
@@ -67,6 +68,21 @@ if(size(tether_pts, 1) == 2)
               cosd(theta1), -cosd(theta2)];
         M2 = [mass; 0];
         f(i,:) = M1\M2;
+    end
+elseif (size(tether_pts, 1) == 3)
+    for i = 1:length(t)
+        teth1_vec = tether_pts(1,:) - COM(i,:);
+        teth2_vec = tether_pts(2,:) - COM(i,:);
+        teth3_vec = tether_pts(3,:) - COM(i,:);
+        teth1_hat = teth1_vec/norm(teth1_vec);
+        teth2_hat = teth2_vec/norm(teth2_vec);
+        teth3_hat = teth3_vec/norm(teth3_vec);
+        M1 = [teth1_hat(1), teth2_hat(1), teth3_hat(1);
+              teth1_hat(2), teth2_hat(2), teth3_hat(2);
+              teth1_hat(3), teth2_hat(3), teth3_hat(3)];
+        M2 = [0;0;mass];
+        f(i,:) = M1\M2;
+
     end
 end
 
