@@ -3,7 +3,6 @@ close all
 clc
 % simulating the tether speed required assuming an immediate changing in
 % tether length to follow center of mass oscilations
-% tether forces is implemented for 2 tethers but not three yet
 
 % everything is is feet
 
@@ -30,11 +29,11 @@ mass = 200;
 
 % max allowable oscillation distance and frequency each direction
 x_A = COM_init_height*tand(10);
-x_f = 1;
+x_f = 0;
 y_A = COM_init_height*tand(10);
 y_f = 0;
-z_A = 0.82021; % 0.25 meters
-z_f = 0;
+z_A = 0.82021*2; % 0.25 meters
+z_f = 1;
 
 % center of mass location and rate of change
 COM_x = @(t) x_A*sin(2*pi*x_f*t);
@@ -111,6 +110,18 @@ if(size(tether_pts, 1) == 2)
     plot(t, f(:,1))
     hold on
     plot(t, f(:,2))
+    title("tether forces")
+    xlabel("time (s)")
+    ylabel("tether force")
+    legend(leg)
+end
+if(size(tether_pts, 1) == 3)
+    figure(3)
+    plot(t, f(:,1))
+    hold on
+    plot(t, f(:,2))
+    hold on
+    plot(t, f(:,3))
     title("tether forces")
     xlabel("time (s)")
     ylabel("tether force")
