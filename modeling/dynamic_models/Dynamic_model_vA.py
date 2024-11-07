@@ -1,28 +1,55 @@
+# This model attempts to quantify the update rate needed by the controller to keep the angle and force errors under the
+# threshold
+
+# major assumptions:
+#   uses the horizontal convergence method for doing the tetrahedron calcs which assumes the torso-tether attachment
+#       plane is parallel to the floor and that the torso does not twist
+#   assumes an immediate change in tension is possible from the servo motors, this adjustment time will be factored in
+#       later
+#   assumes the torso attachment location is in the shape of a circle with radius r
+
 import numpy as np
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-def equations(p, a, b, c, r):
+def equations(p, a, b, c, teth_anchor, offset):
     x, y, z = p
     return (
-        x**2 + (y-(2-r))**2 + z**2 - a**2,
-        (x-(2-r)*np.cos(210*np.pi/180))**2 + (y-(2-r)*np.sin(210*np.pi/180))**2 + z**2 - b**2,
-        (x-(2-r)*np.cos(330*np.pi/180))**2 + (y-(2-r)*np.sin(330*np.pi/180))**2 + z**2 - c**2
+        # front tether
+        (x - (teth_anchor[0][0] + offset[0][0])) ** 2 + (y - (teth_anchor[0][1] + offset[0][1])) ** 2 + (z - (teth_anchor[0][2] + offset[0][2])) ** 2 - a ** 2,
+
+        # left tether
+        (x - (teth_anchor[1][0] + offset[1][0])) ** 2 + (y - (teth_anchor[1][1] + offset[1][1])) ** 2 + (z - (teth_anchor[1][2] + offset[1][2])) ** 2 - b ** 2,
+
+        # right tether
+        (x - (teth_anchor[2][0] + offset[2][0])) ** 2 + (y - (teth_anchor[2][1] + offset[2][1])) ** 2 + (z - (teth_anchor[2][2] + offset[2][2])) ** 2 - c ** 2,
     )
 
-def calculate_apex(a, b, c, r):
-    initial_guess = [2, 2, 4]  # Start with a point above the base
-    apex = fsolve(equations, initial_guess, args=(a, b, c, r))
+
+def calculate_apex(a, b, c, teth_anchor, offset):
+    initial_guess = [2, 2, -4]  # Start with a point above the base
+    apex = fsolve(equations, initial_guess, args=(a, b, c, teth_anchor, offset))
     return apex
 
-def calculate_tether_forces(apex, mass, r):
-    teth1_vec = np.array(apex) - np.array([0, (2-r), 0])
-    teth2_vec = np.array(apex) - np.array([(2-r)*np.cos(210*np.pi/180), (2-r)*np.sin(210*np.pi/180), 0])
-    teth3_vec = np.array(apex) - np.array([(2-r)*np.cos(330*np.pi/180), (2-r)*np.sin(330*np.pi/180), 0])
+
+def calculate_tether_vecs(COM, teth_anchor, offset):
+    # determine the tether unit vector
+    teth1_vec = np.array(teth_anchor[0][:]) - (np.array(COM) - np.array(offset[0][:]))
+    teth2_vec = np.array(teth_anchor[1][:]) - (np.array(COM) - np.array(offset[1][:]))
+    teth3_vec = np.array(teth_anchor[2][:]) - (np.array(COM) - np.array(offset[2][:]))
     teth1_hat = teth1_vec/np.linalg.norm(teth1_vec)
     teth2_hat = teth2_vec/np.linalg.norm(teth2_vec)
     teth3_hat = teth3_vec/np.linalg.norm(teth3_vec)
+    lengths = [np.linalg.norm(teth1_vec),np.linalg.norm(teth2_vec),np.linalg.norm(teth3_vec)]
+
+    return (teth1_hat, teth2_hat, teth3_hat, lengths)
+
+
+def calculate_tether_forces(apex, mass, teth_anchor, offset):
+    # solve the system of eqns of the unit vectors to find the equations
+    teth1_hat, teth2_hat, teth3_hat, _ = calculate_tether_vecs(apex, teth_anchor, offset)
+
     M1 = np.array([[teth1_hat[0], teth2_hat[0], teth3_hat[0]],
                    [teth1_hat[1], teth2_hat[1], teth3_hat[1]],
                    [teth1_hat[2], teth2_hat[2], teth3_hat[2]]])
@@ -30,31 +57,18 @@ def calculate_tether_forces(apex, mass, r):
     f = np.dot(np.linalg.inv(M1), M2)
     return f
 
-def calculate_tether_length(COM, r):
-    teth1_attach_loc = np.array(COM) + np.array([0.0, r, 0.0])
-    teth2_attach_loc = np.array(COM) + np.array([r*np.cos(210*np.pi/180), r*np.sin(210*np.pi/180), 0])
-    teth3_attach_loc = np.array(COM) + np.array([r*np.cos(330*np.pi/180), r*np.sin(330*np.pi/180), 0])
-    teth_lengths = np.array([0.0, 0.0, 0.0])
-    teth_lengths[0] = np.linalg.norm(teth1_attach_loc - np.array([0.0, 2.0, 0.0]))
-    teth_lengths[1] = np.linalg.norm(teth2_attach_loc - np.array([2*np.cos(210*np.pi/180), 2*np.sin(210*np.pi/180), 0]))
-    teth_lengths[2] = np.linalg.norm(teth3_attach_loc - np.array([2*np.cos(330*np.pi/180), 2*np.sin(330*np.pi/180), 0]))
-    return teth_lengths
+def calculate_tether_error(COM, f, mass, teth_anchor, offset):
+    teth1_hat, teth2_hat, teth3_hat, _ = calculate_tether_vecs(COM, teth_anchor, offset)
+    teth1_vec = f[0]*teth1_hat
+    teth2_vec = f[1]*teth2_hat
+    teth3_vec = f[2]*teth3_hat
 
-def calculate_tether_error(COM, f, mass, r):
-    teth1_attach_loc = np.array(COM) + np.array([0.0, r, 0.0])
-    teth2_attach_loc = np.array(COM) + np.array([r*np.cos(210*np.pi/180), r*np.sin(210*np.pi/180), 0])
-    teth3_attach_loc = np.array(COM) + np.array([r*np.cos(330*np.pi/180), r*np.sin(330*np.pi/180), 0])
-    teth1_init_vec = np.array([0.0, 2.0, 0.0]) - teth1_attach_loc
-    teth2_init_vec = np.array([2*np.cos(210*np.pi/180), 2*np.sin(210*np.pi/180), 0]) - teth2_attach_loc
-    teth3_init_vec = np.array([2*np.cos(330*np.pi/180), 2*np.sin(330*np.pi/180), 0]) - teth3_attach_loc
-    teth1_vec = f[0]*(teth1_init_vec/np.linalg.norm(teth1_init_vec))
-    teth2_vec = f[1]*(teth2_init_vec/np.linalg.norm(teth2_init_vec))
-    teth3_vec = f[2]*(teth3_init_vec/np.linalg.norm(teth3_init_vec))
-
-    expected_f_vec = np.array([0, 0, -mass])
+    expected_f_vec = np.array([0, 0, mass])
     f_vec = teth1_vec + teth2_vec + teth3_vec
 
+    # find the angle between expected and actual
     angle_err = np.arccos(np.dot(expected_f_vec, f_vec)/(np.linalg.norm(expected_f_vec)*np.linalg.norm(f_vec)))*(180/np.pi)
+    # determine the difference between their forces
     f_err = np.abs(np.linalg.norm(expected_f_vec) - np.linalg.norm(f_vec))
 
     return f_err, angle_err, teth1_vec,teth2_vec, teth3_vec
@@ -63,7 +77,7 @@ def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
     time = np.linspace(0, time_steps*dt, time_steps)
     
     # Initial position and height
-    initial_height = 3.0  # feet
+    initial_height = -3.0  # feet
     
     # Initialize tilt angles
     x_tilt = np.zeros_like(time)
@@ -178,15 +192,33 @@ def main():
     # Simulation parameters
     mass = 200.0  # person's weight (lb)
     r = 3 / (2 * np.pi)  # waist radius (ft)
-    
+
+    # tether anchor loc 3x3 each row is the vector for each tether
+    # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
+    teth_anchor = [[2.0,                      0.0,                     0.0],
+                  [2.0*np.cos(240*np.pi/180), 2.0*np.sin(240*np.pi/180), 0.0],
+                  [2.0*np.cos(120*np.pi/180), 2.0*np.sin(120*np.pi/180), 0.0]]
+    # attachment offset vector 3x3 each row is the vector for each tether
+    # assuming circular radius (pointing from tether attachment loc to COM
+    offset = [[-r,                      0.0,                     0.0],
+              [-r*np.cos(240*np.pi/180), -r*np.sin(240*np.pi/180), 0.0],
+              [-r*np.cos(120*np.pi/180), -r*np.sin(120*np.pi/180), 0.0]]
+
     # Time parameters
     duration = 5.0  # seconds (5 complete cycles at 1Hz)
-    dt = 0.01  # time step
-    time_steps = int(duration/dt)
+    dt = 0.001  # time step
+    time_steps = int(duration/dt)+1
     time_vec = np.linspace(0, duration, time_steps)
+
+    # force update rate parameters
+    force_update_rate = 50  # in hz
+    update_steps = int(duration / (1/force_update_rate))+1
+    update_vec = np.linspace(0, duration, update_steps)
+    # separate iterator for force update
+    j = 0
     
     # Set tilt axis ('x' or 'y')
-    tilt_axis = 'y'  
+    tilt_axis = 'x'
     
     # Generate COM movement and tilt angles
     positions, tilt_angles = simulate_tilting_motion(time_steps, dt, tilt_axis)
@@ -200,25 +232,28 @@ def main():
     tether1_vec = np.zeros((time_steps, 3))
     tether2_vec = np.zeros((time_steps, 3))
     tether3_vec = np.zeros((time_steps, 3))
-    
+
     # Run simulation
     for i in range(time_steps):
         # Update COM position based on tilt
         COM = positions[i, :]
         
         # Calculate tether properties
-        teth_lengths = calculate_tether_length(COM, r)
-        apex = calculate_apex(teth_lengths[0], teth_lengths[1], teth_lengths[2], r)
-        f = calculate_tether_forces(apex, mass, r)
+        _, _, _, teth_lengths = calculate_tether_vecs(COM, teth_anchor, offset)
+        apex = calculate_apex(teth_lengths[0], teth_lengths[1], teth_lengths[2], teth_anchor, offset)
+        # update force only at the prescribed for update rate
+        if abs(time_vec[i] - update_vec[j]) < dt:
+            f = calculate_tether_forces(apex, mass, teth_anchor, offset)
+            j += 1
         
         # Calculate errors and torques
-        f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, r)
+        f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
         
         # Limit angular error to less than 5 degrees
         if ang_err > 5:
             # Adjust tether forces to reduce angular error
-            f = calculate_tether_forces(apex, mass, r)
-            f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, r)
+            f = calculate_tether_forces(apex, mass, teth_anchor, offset)
+            f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
         
         # Store results
         f_errors[i] = f_err
@@ -227,9 +262,9 @@ def main():
     
     # Plot results
     plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, torques, tilt_axis, tether1_vec, tether2_vec, tether3_vec)
-    print(np.sqrt((tether1_vec[0][0])**2+(tether1_vec[0][1])**2+(tether1_vec[0][2])**2))
-    print(np.sqrt((tether2_vec[0][0])**2+(tether2_vec[0][1])**2+(tether2_vec[0][2])**2))
-    print(np.sqrt((tether3_vec[0][0])**2+(tether3_vec[0][1])**2+(tether3_vec[0][2])**2))
+    # print(np.sqrt((tether1_vec[0][0])**2+(tether1_vec[0][1])**2+(tether1_vec[0][2])**2))
+    # print(np.sqrt((tether2_vec[0][0])**2+(tether2_vec[0][1])**2+(tether2_vec[0][2])**2))
+    # print(np.sqrt((tether3_vec[0][0])**2+(tether3_vec[0][1])**2+(tether3_vec[0][2])**2))
 
 
 if __name__ == "__main__":
