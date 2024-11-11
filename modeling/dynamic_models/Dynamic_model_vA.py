@@ -249,12 +249,6 @@ def main():
         # Calculate errors and torques
         f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
         
-        # Limit angular error to less than 5 degrees
-        if ang_err > 5:
-            # Adjust tether forces to reduce angular error
-            f = calculate_tether_forces(apex, mass, teth_anchor, offset)
-            f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
-        
         # Store results
         f_errors[i] = f_err
         ang_errors[i] = ang_err

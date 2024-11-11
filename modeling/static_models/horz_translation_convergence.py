@@ -145,16 +145,12 @@ def plot_error(psi_vec, f_err, ang_err):
     plt.xlabel("yaw rotation about center of platform (deg)")
     plt.ylabel("tether vec angle error (deg)")
 
-    plt.show()
-
 def plot_torque(psi_vec, torque):
     psi_vec = np.rad2deg(psi_vec)
     plt.figure(2)
     plt.plot(psi_vec, torque)
     plt.ylabel("torque applied (lb*ft)")
     plt.title("torque applied vs changes in rotation about center of platform")
-
-    plt.show()
 
 def main():
     # persons weight (lb)
@@ -207,7 +203,7 @@ def main():
     # print("force error (lb): ", f_err)
     # print("angular error (deg): ", ang_err)
     print(torque)
-
+    plt.show()
 
 
 
