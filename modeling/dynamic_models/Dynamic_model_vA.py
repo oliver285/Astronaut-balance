@@ -46,7 +46,7 @@ def calculate_tether_vecs(COM, teth_anchor, offset):
     teth1_hat = teth1_vec/np.linalg.norm(teth1_vec)
     teth2_hat = teth2_vec/np.linalg.norm(teth2_vec)
     teth3_hat = teth3_vec/np.linalg.norm(teth3_vec)
-    lengths = [np.linalg.norm(teth1_vec),np.linalg.norm(teth2_vec),np.linalg.norm(teth3_vec)]
+    lengths = np.array([np.linalg.norm(teth1_vec),np.linalg.norm(teth2_vec),np.linalg.norm(teth3_vec)])
 
     return (teth1_hat, teth2_hat, teth3_hat, lengths)
 
@@ -91,10 +91,11 @@ def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
     y_tilt = np.zeros_like(time)
     
     # Generate tilting angles (converting to radians) for specified axis
+    # 0.75 is the sway requirement in hertz
     if tilt_axis.lower() == 'x':
-        x_tilt = np.deg2rad(10) * np.sin(2 * np.pi * time)  # ±10 degrees in x
+        x_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.75 * time)  # ±10 degrees in x
     elif tilt_axis.lower() == 'y':
-        y_tilt = np.deg2rad(10) * np.sin(2 * np.pi * time)  # ±10 degrees in y
+        y_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.75 * time)  # ±10 degrees in y
     else:
         raise ValueError("tilt_axis must be either 'x' or 'y'")
     
@@ -194,6 +195,7 @@ def main():
     # Simulation parameters
     mass = 200.0  # person's weight (lb)
     r = 3 / (2 * np.pi)  # waist radius (ft)
+    teth_percent_error = 0.05  # percent error in tether length
 
     # tether anchor loc 3x3 each row is the vector for each tether
     # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
@@ -213,13 +215,13 @@ def main():
     time_vec = np.linspace(0, duration, time_steps)
 
     # force update rate parameters
-    force_update_rate = 0.01  # time it takes to run tetrahedron calcs and update force command
+    force_update_rate = 0.002  # time it takes to run tetrahedron calcs and update force command
     update_steps = int(duration / force_update_rate)+1
     update_vec = np.linspace(0, duration, update_steps)
     # separate iterator for force update
     j = 0
     # linear assumption for time it takes servo to reach new torque
-    reaction_t = 0.02  # seconds
+    reaction_t = 0.01  # seconds
     # parameters defining old force and time for linear convergence
     f = np.array([[0.0], [0.0], [0.0]])
     f_new = np.array([[0.0], [0.0], [0.0]])
@@ -249,16 +251,19 @@ def main():
         
         # Calculate tether properties
         _, _, _, teth_lengths = calculate_tether_vecs(COM, teth_anchor, offset)
+
+        teth_lengths = teth_lengths + teth_percent_error * teth_lengths
         apex = calculate_apex(teth_lengths[0], teth_lengths[1], teth_lengths[2], teth_anchor, offset)
 
         # update force at the start
         if i == 0:
             f = calculate_tether_forces(apex, mass, teth_anchor, offset)
+            f_new = f
             f_old = f
             t1 = time_vec[i]
             j += 1
         # update force only at the prescribed update rate
-        elif abs(time_vec[i] - update_vec[j]) < dt:
+        elif abs(time_vec[i] - update_vec[j]) < dt/2:
             # f = calculate_tether_forces(apex, mass, teth_anchor, offset)
             f_new = calculate_tether_forces(apex, mass, teth_anchor, offset)
             f_old = f
@@ -266,7 +271,7 @@ def main():
             j += 1
         else:
             # if torque is not reached yet
-            if time_vec[i] < t1+reaction_t:
+            if (time_vec[i] < t1+reaction_t) & (time_vec[i] > force_update_rate):
                 f = ((f_new - f_old) / reaction_t) * (time_vec[i]) - ((f_new - f_old) / reaction_t) * t1 + f_old
 
             # if we reach torque before next update
