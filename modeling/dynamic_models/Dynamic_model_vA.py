@@ -6,12 +6,17 @@
 #       plane is parallel to the floor and that the torso does not twist
 #   assumes an immediate change in tension is possible from the servo motors, this adjustment time will be factored in
 #       later
-#   assumes the torso attachment location is in the shape of a circle with radius r
+#   assumes the torso is in the shape of a circle with radius r and the attachment location is at the same height as the
+#       center of mass
+#
+# I am worried that this doesn't account for the fact that the actual control loop will run based off of changes in load
+# cell readings that drive length changes rather than the other way around
 
 import numpy as np
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+
 
 def equations(p, a, b, c, teth_anchor, offset):
     x, y, z = p
@@ -57,6 +62,7 @@ def calculate_tether_forces(apex, mass, teth_anchor, offset):
     f = np.dot(np.linalg.inv(M1), M2)
     return f
 
+
 def calculate_tether_error(COM, f, mass, teth_anchor, offset):
     teth1_hat, teth2_hat, teth3_hat, _ = calculate_tether_vecs(COM, teth_anchor, offset)
     teth1_vec = f[0]*teth1_hat
@@ -72,6 +78,7 @@ def calculate_tether_error(COM, f, mass, teth_anchor, offset):
     f_err = np.abs(np.linalg.norm(expected_f_vec) - np.linalg.norm(f_vec))
 
     return f_err, angle_err, teth1_vec,teth2_vec, teth3_vec
+
 
 def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
     time = np.linspace(0, time_steps*dt, time_steps)
@@ -108,6 +115,7 @@ def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
     
     return positions, np.column_stack((x_tilt, y_tilt))
 
+
 def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, torques, tilt_axis, tether1vec, tether2vec, tether3vec):
     fig = plt.figure(figsize=(15, 12))
     
@@ -125,7 +133,6 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
         ax2.plot(time_vec, np.rad2deg(angles[:, 0]), label='X Tilt')
     else:
         ax2.plot(time_vec, np.rad2deg(angles[:, 1]), label='Y Tilt')
-    ax2.set_xlabel('Time (s)')
     ax2.set_ylabel('Tilt Angle (deg)')
     ax2.set_title(f'{tilt_axis.upper()}-Axis Tilt Angle Over Time')
     ax2.legend()
@@ -135,7 +142,6 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax3.plot(time_vec, positions[:, 0], label='X')
     ax3.plot(time_vec, positions[:, 1], label='Y')
     ax3.plot(time_vec, positions[:, 2], label='Z')
-    ax3.set_xlabel('Time (s)')
     ax3.set_ylabel('Position (ft)')
     ax3.set_title('Position Components Over Time')
     ax3.legend()
@@ -143,7 +149,6 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     # Force error plot
     ax4 = fig.add_subplot(324)
     ax4.plot(time_vec, f_errors)
-    ax4.set_xlabel('Time (s)')
     ax4.set_ylabel('Force Error (lbf)')
     ax4.set_title('Tether Force Error')
     
@@ -180,12 +185,9 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax9.set_ylabel('Tether 3 Force (lbf)')
     ax9.legend()
     fig2.suptitle('Tether Force Components Over Time')
-    
-
 
     plt.tight_layout()
     plt.show()
-
 
 
 def main():
@@ -206,16 +208,23 @@ def main():
 
     # Time parameters
     duration = 5.0  # seconds (5 complete cycles at 1Hz)
-    dt = 0.001  # time step
+    dt = 0.001  # time step (essentially our sensor suite update rate)
     time_steps = int(duration/dt)+1
     time_vec = np.linspace(0, duration, time_steps)
 
     # force update rate parameters
-    force_update_rate = 50  # in hz
-    update_steps = int(duration / (1/force_update_rate))+1
+    force_update_rate = 0.01  # time it takes to run tetrahedron calcs and update force command
+    update_steps = int(duration / force_update_rate)+1
     update_vec = np.linspace(0, duration, update_steps)
     # separate iterator for force update
     j = 0
+    # linear assumption for time it takes servo to reach new torque
+    reaction_t = 0.02  # seconds
+    # parameters defining old force and time for linear convergence
+    f = np.array([[0.0], [0.0], [0.0]])
+    f_new = np.array([[0.0], [0.0], [0.0]])
+    f_old = np.array([[0.0], [0.0], [0.0]])
+    t1 = 0
     
     # Set tilt axis ('x' or 'y')
     tilt_axis = 'x'
@@ -241,22 +250,40 @@ def main():
         # Calculate tether properties
         _, _, _, teth_lengths = calculate_tether_vecs(COM, teth_anchor, offset)
         apex = calculate_apex(teth_lengths[0], teth_lengths[1], teth_lengths[2], teth_anchor, offset)
-        # update force only at the prescribed for update rate
-        if abs(time_vec[i] - update_vec[j]) < dt:
+
+        # update force at the start
+        if i == 0:
             f = calculate_tether_forces(apex, mass, teth_anchor, offset)
+            f_old = f
+            t1 = time_vec[i]
             j += 1
-        
+        # update force only at the prescribed update rate
+        elif abs(time_vec[i] - update_vec[j]) < dt:
+            # f = calculate_tether_forces(apex, mass, teth_anchor, offset)
+            f_new = calculate_tether_forces(apex, mass, teth_anchor, offset)
+            f_old = f
+            t1 = time_vec[i]
+            j += 1
+        else:
+            # if torque is not reached yet
+            if time_vec[i] < t1+reaction_t:
+                f = ((f_new - f_old) / reaction_t) * (time_vec[i]) - ((f_new - f_old) / reaction_t) * t1 + f_old
+
+            # if we reach torque before next update
+            else:
+                f = ((f_new - f_old) / reaction_t) * (t1+reaction_t) - ((f_new - f_old) / reaction_t) * t1 + f_old
+
         # Calculate errors and torques
         f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
         
         # Store results
         f_errors[i] = f_err
         ang_errors[i] = ang_err
-        #torques[i] = np.linalg.norm(calculate_applied_torque(COM, tilt_angles[i, 0], tilt_angles[i, 1], f, r))
+        # torques[i] = np.linalg.norm(calculate_applied_torque(COM, tilt_angles[i, 0], tilt_angles[i, 1], f, r))
     
     # Plot results
     plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, torques, tilt_axis, tether1_vec, tether2_vec, tether3_vec)
-    # print(np.sqrt((tether1_vec[0][0])**2+(tether1_vec[0][1])**2+(tether1_vec[0][2])**2))
+    print(np.sqrt((tether1_vec[0][0])**2+(tether1_vec[0][1])**2+(tether1_vec[0][2])**2))
     # print(np.sqrt((tether2_vec[0][0])**2+(tether2_vec[0][1])**2+(tether2_vec[0][2])**2))
     # print(np.sqrt((tether3_vec[0][0])**2+(tether3_vec[0][1])**2+(tether3_vec[0][2])**2))
 
