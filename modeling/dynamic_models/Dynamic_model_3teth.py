@@ -16,7 +16,7 @@ import numpy as np
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-
+import Parameters
 
 def equations(p, a, b, c, teth_anchor, offset):
     x, y, z = p
@@ -192,21 +192,18 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
 
 
 def main():
+    p = Parameters.Parameters()
     # Simulation parameters
-    mass = 200.0  # person's weight (lb)
-    r = 3 / (2 * np.pi)  # waist radius (ft)
+    mass = p.mass  # person's weight (lb)
+    r = p.r  # waist radius (ft)
     teth_percent_error = 0.05  # percent error in tether length
 
     # tether anchor loc 3x3 each row is the vector for each tether
     # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
-    teth_anchor = [[2.0,                      0.0,                     0.0],
-                  [2.0*np.cos(240*np.pi/180), 2.0*np.sin(240*np.pi/180), 0.0],
-                  [2.0*np.cos(120*np.pi/180), 2.0*np.sin(120*np.pi/180), 0.0]]
+    teth_anchor = p.teth_anchor
     # attachment offset vector 3x3 each row is the vector for each tether
     # assuming circular radius (pointing from tether attachment loc to COM
-    offset = [[-r,                      0.0,                     0.0],
-              [-r*np.cos(240*np.pi/180), -r*np.sin(240*np.pi/180), 0.0],
-              [-r*np.cos(120*np.pi/180), -r*np.sin(120*np.pi/180), 0.0]]
+    offset = p.offset
 
     # Time parameters
     duration = 5.0  # seconds (5 complete cycles at 1Hz)
