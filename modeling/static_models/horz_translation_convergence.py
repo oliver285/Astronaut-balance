@@ -144,6 +144,7 @@ def plot_error(psi_vec, f_err, ang_err):
     plt.plot(psi_vec, ang_err)
     plt.xlabel("yaw rotation about center of platform (deg)")
     plt.ylabel("tether vec angle error (deg)")
+    plt.savefig("plots/hip_tilt_errors.png")
 
 def plot_torque(psi_vec, torque):
     psi_vec = np.rad2deg(psi_vec)

@@ -137,7 +137,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax1.invert_zaxis()
     ax1.grid(True)
     plt.tight_layout()
-    plt.show()
+    plt.savefig('plots/3D_trajectory.png')
     
     # Tilt angle plot
     fig2 = plt.figure(figsize=figsize)
@@ -153,7 +153,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax2.legend()
     ax2.set_ylim([-15, 15])
     plt.tight_layout()
-    plt.show()
+    plt.savefig('plots/tilt_angle.png')
     
     # Position components plot
     fig3 = plt.figure(figsize=figsize)
@@ -168,7 +168,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax3.legend()
     ax3.set_ylim([-3, 3])
     plt.tight_layout()
-    plt.show()
+    plt.savefig('plots/position_components.png')
     
     # Force error plot
     fig4 = plt.figure(figsize=figsize)
@@ -182,7 +182,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax4.legend()
     ax4.set_ylim([0, 8])
     plt.tight_layout()
-    plt.show()
+    plt.savefig('plots/force_error.png')
     
     # Angular error plot
     fig5 = plt.figure(figsize=figsize)
@@ -196,9 +196,8 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax5.legend()
     ax5.set_ylim([0, 4])
     plt.tight_layout()
-    plt.show()
-    
-    
+    plt.savefig('plots/angular_error.png')
+
     # Tether force component plots 
     # Tether 1
     fig7 = plt.figure(figsize=figsize)
@@ -211,6 +210,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax7.grid(True)
     ax7.legend()
     ax7.set_ylim([-200, 200])
+    plt.savefig('plots/teth_1_force_components.png')
    
     
     # Tether 2
@@ -222,6 +222,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax8.set_ylabel('Tether 2 Force Components (lbf)')
     ax8.grid(True)
     ax8.set_ylim([-200, 200])
+    plt.savefig('plots/teth_2_force_components.png')
     
     # Tether 3
     ax9 = fig7.add_subplot(313)
@@ -234,7 +235,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax9.set_ylim([-200, 200])
     fig7.suptitle('Tether Force Vector Components Over Time')
     plt.tight_layout()
-    plt.show()
+    plt.savefig('plots/teth_3_force_components.png')
 
     fig10 = plt.figure(figsize=figsize)
     ax11 = fig10.add_subplot(311)
@@ -250,10 +251,11 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
         ax.set_xlabel('Time (s)')
         ax.grid(True)
         ax.set_ylim([-3, 3])
+    plt.savefig('plots/teth_length_errors.png')
      
     fig10.suptitle('Random Tether Length Error Over Time')
     plt.tight_layout()
-    plt.show()
+
 
 def main():
     p = Parameters.Parameters()
@@ -360,7 +362,7 @@ def main():
     
     # Plot results
     plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, torques, tilt_axis, tether1_vec, tether2_vec, tether3_vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec)
-    
+    plt.show()
 
 
 if __name__ == "__main__":
