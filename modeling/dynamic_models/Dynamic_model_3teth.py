@@ -195,8 +195,6 @@ def main():
     p = Parameters.Parameters()
     # Simulation parameters
     mass = p.mass  # person's weight (lb)
-    r = p.r  # waist radius (ft)
-    teth_percent_error = 0.05  # percent error in tether length
 
     # tether anchor loc 3x3 each row is the vector for each tether
     # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
@@ -249,7 +247,6 @@ def main():
         # Calculate tether properties
         _, _, _, teth_lengths = calculate_tether_vecs(COM, teth_anchor, offset)
 
-        teth_lengths = teth_lengths + teth_percent_error * teth_lengths
         apex = calculate_apex(teth_lengths[0], teth_lengths[1], teth_lengths[2], teth_anchor, offset)
 
         # update force at the start
