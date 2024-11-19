@@ -134,22 +134,24 @@ def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
     
     return positions, np.column_stack((x_tilt, y_tilt))
 
-def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, torques, tilt_axis, tether1vec, tether2vec, tether3vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec):
+def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, apex_error, torques, tilt_axis, tether1vec, tether2vec, tether3vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec):
     # Set figure size and style for all plots
     plt.style.use('default')
     figsize = (10, 8)
+
+    norm_time = (time_vec - time_vec.min()) / (time_vec.max() - time_vec.min())
     
     # 3D trajectory plot
     fig1 = plt.figure(figsize=figsize)
     ax1 = fig1.add_subplot(111, projection='3d')
-    ax1.plot(positions[:, 0], positions[:, 1], positions[:, 2], color = 'k', linewidth = 3)
+    ax1.plot(positions[:, 0], positions[:, 1], positions[:, 2], color='k', linewidth=3)
     ax1.set_xlabel('X (ft)')
     ax1.set_ylabel('Y (ft)')
     ax1.set_zlabel('Z (ft)')
     ax1.set_title('COM Trajectory')
-    ax1.set_xlim([-3, 3])
-    ax1.set_ylim([-3, 3])
-    ax1.set_zlim([-3, 3])
+    ax1.set_xlim([-2, 2])
+    ax1.set_ylim([-2, 2])
+    ax1.set_zlim([-3, -1])
     ax1.invert_zaxis()
     ax1.grid(True)
     plt.tight_layout()
@@ -213,6 +215,18 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax5.set_ylim([0, 4])
     plt.tight_layout()
     plt.savefig('plots/angular_error_3teth.png')
+
+    # apex error plot
+    fig15 = plt.figure(figsize=figsize)
+    ax15 = fig15.add_subplot(111)
+    ax15.plot(time_vec, apex_error)
+    ax15.set_xlabel('Time (s)')
+    ax15.set_ylabel('apex error (ft)')
+    ax15.set_title('Apex Error')
+    ax15.grid(True)
+    ax15.set_ylim([0, 0.5])
+    plt.tight_layout()
+    plt.savefig('plots/apex_error_3teth.png')
 
     # Tether force component plots 
     # Tether 1
@@ -285,6 +299,9 @@ def main():
     # assuming circular radius (pointing from tether attachment loc to COM
     offset = p.offset
 
+    # range of tether error lengths
+    teth_length_error_range = 1/12
+
     # Time parameters
     duration = 5.0  # seconds (5 complete cycles at 1Hz)
     dt = 0.001  # time step (essentially our sensor suite update rate)
@@ -306,14 +323,16 @@ def main():
     t1 = 0
     
     # Set tilt axis ('x' or 'y')
-    tilt_axis = 'x'
+    tilt_axis = 'z'
     
     # Generate COM movement and tilt angles
     positions, tilt_angles = simulate_tilting_motion(time_steps, dt, tilt_axis)
+    apex_vec = np.zeros((time_steps, 3))
     
     # Initialize arrays to store results
     f_errors = np.zeros(time_steps)
     ang_errors = np.zeros(time_steps)
+    apex_error = np.zeros(time_steps)
     torques = np.zeros(time_steps)
     
     # Arrays to store tether force vectors
@@ -335,9 +354,9 @@ def main():
         
         # calculate random tether errors for each time step ranging from -1in to 1in
         if (i != 0):
-            err_teth_one_vec[i] = random.uniform(-(0.5/12),(0.5/12))
-            err_teth_two_vec[i] = random.uniform(-(0.5/12),(0.5/12))
-            err_teth_three_vec[i] = random.uniform(-(0.5/12),(0.5/12))
+            err_teth_one_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
+            err_teth_two_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
+            err_teth_three_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
             # err_teth_one_vec[i] = 0
             # err_teth_two_vec[i] = 0
             # err_teth_three_vec[i] = 0
@@ -347,6 +366,8 @@ def main():
             err_teth_two_vec[i] = 0
             err_teth_three_vec[i] = 0
             apex = calculate_apex(teth_lengths[0], teth_lengths[1], teth_lengths[2], teth_anchor, offset)
+
+        apex_vec[i, :] = apex
 
         # update force at the start
         if i == 0:
@@ -373,14 +394,17 @@ def main():
 
         # Calculate errors and torques
         f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
-        
+
         # Store results
+        apex_error[i] = np.linalg.norm(COM-apex)
         f_errors[i] = f_err
         ang_errors[i] = ang_err
         # torques[i] = np.linalg.norm(calculate_applied_torque(COM, tilt_angles[i, 0], tilt_angles[i, 1], f, r))
-    
+
+
     # Plot results
-    plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, torques, tilt_axis, tether1_vec, tether2_vec, tether3_vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec)
+    plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, apex_error, torques, tilt_axis,
+                            tether1_vec, tether2_vec, tether3_vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec)
     plt.show()
 
 
