@@ -4,8 +4,7 @@
 # major assumptions:
 #   uses the horizontal convergence method for doing the tetrahedron calcs which assumes the torso-tether attachment
 #       plane is parallel to the floor and that the torso does not twist
-#   assumes an immediate change in tension is possible from the servo motors, this adjustment time will be factored in
-#       later
+#   assumes the tension change applied by the servos occurs in a linear time
 #   assumes the torso is in the shape of a circle with radius r and the attachment location is at the same height as the
 #       center of mass
 #
@@ -91,6 +90,7 @@ def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
     # Initialize tilt angles
     x_tilt = np.zeros_like(time)
     y_tilt = np.zeros_like(time)
+    z_trans = np.zeros_like(time)
     
     # Generate tilting angles (converting to radians) for specified axis
     # 0.75 is the sway requirement in hertz
@@ -98,23 +98,39 @@ def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
         x_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.75 * time)  # ±10 degrees in x
     elif tilt_axis.lower() == 'y':
         y_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.75 * time)  # ±10 degrees in y
+    elif tilt_axis.lower() == 'z':
+        z_trans = 0.82021 * np.sin(2 * np.pi * 0.75 * time)
     else:
-        raise ValueError("tilt_axis must be either 'x' or 'y'")
+        raise ValueError("tilt_axis must be either 'x', 'y', or 'z'")
     
     positions = np.zeros((time_steps, 3))
-    
-    for i in range(time_steps):
-        # Calculate new position based on tilt angles
-        # X position changes with forward/backward tilt (x_tilt)
-        x = initial_height * np.sin(x_tilt[i])
-        
-        # Y position changes with side-to-side tilt (y_tilt)
-        y = initial_height * np.sin(y_tilt[i])
-        
-        # Z position decreases as person tilts
-        z = initial_height * np.cos(x_tilt[i]) * np.cos(y_tilt[i])
-        
-        positions[i] = [x, y, z]
+
+    if (tilt_axis.lower() == 'x') | (tilt_axis.lower() == 'y'):
+        for i in range(time_steps):
+            # Calculate new position based on tilt angles
+            # X position changes with forward/backward tilt (x_tilt)
+            x = initial_height * np.sin(x_tilt[i])
+
+            # Y position changes with side-to-side tilt (y_tilt)
+            y = initial_height * np.sin(y_tilt[i])
+
+            # Z position decreases as person tilts
+            z = initial_height * np.cos(x_tilt[i]) * np.cos(y_tilt[i])
+
+            positions[i] = [x, y, z]
+    else:
+        for i in range(time_steps):
+            # Calculate new position based on tilt angles
+            # X position changes with forward/backward tilt (x_tilt)
+            x = 0
+
+            # Y position changes with side-to-side tilt (y_tilt)
+            y = 0
+
+            # Z position decreases as person tilts
+            z = initial_height + z_trans[i]
+
+            positions[i] = [x, y, z]
     
     return positions, np.column_stack((x_tilt, y_tilt))
 
@@ -168,7 +184,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax3.legend()
     ax3.set_ylim([-3, 3])
     plt.tight_layout()
-    plt.savefig('plots/position_components.png')
+    plt.savefig('plots/position_components_3teth.png')
     
     # Force error plot
     fig4 = plt.figure(figsize=figsize)
@@ -182,7 +198,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax4.legend()
     ax4.set_ylim([0, 8])
     plt.tight_layout()
-    plt.savefig('plots/force_error.png')
+    plt.savefig('plots/force_error_3teth.png')
     
     # Angular error plot
     fig5 = plt.figure(figsize=figsize)
@@ -196,7 +212,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax5.legend()
     ax5.set_ylim([0, 4])
     plt.tight_layout()
-    plt.savefig('plots/angular_error.png')
+    plt.savefig('plots/angular_error_3teth.png')
 
     # Tether force component plots 
     # Tether 1
@@ -210,7 +226,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax7.grid(True)
     ax7.legend()
     ax7.set_ylim([-200, 200])
-    plt.savefig('plots/teth_1_force_components.png')
+    plt.savefig('plots/teth_1_force_components_3teth.png')
    
     
     # Tether 2
@@ -222,7 +238,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax8.set_ylabel('Tether 2 Force Components (lbf)')
     ax8.grid(True)
     ax8.set_ylim([-200, 200])
-    plt.savefig('plots/teth_2_force_components.png')
+    plt.savefig('plots/teth_2_force_components_3teth.png')
     
     # Tether 3
     ax9 = fig7.add_subplot(313)
@@ -235,7 +251,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax9.set_ylim([-200, 200])
     fig7.suptitle('Tether Force Vector Components Over Time')
     plt.tight_layout()
-    plt.savefig('plots/teth_3_force_components.png')
+    plt.savefig('plots/teth_3_force_components_3teth.png')
 
     fig10 = plt.figure(figsize=figsize)
     ax11 = fig10.add_subplot(311)
@@ -251,7 +267,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
         ax.set_xlabel('Time (s)')
         ax.grid(True)
         ax.set_ylim([-3, 3])
-    plt.savefig('plots/teth_length_errors.png')
+    plt.savefig('plots/teth_length_errors_3teth.png')
      
     fig10.suptitle('Random Tether Length Error Over Time')
     plt.tight_layout()
@@ -315,13 +331,16 @@ def main():
         # Calculate tether properties
         _, _, _, teth_lengths = calculate_tether_vecs(COM, teth_anchor, offset)
        
-        #teth_lengths = teth_lengths + teth_percent_error * teth_lengths (adding tether error of one number for every step)
+        # teth_lengths = teth_lengths + teth_percent_error * teth_lengths (adding tether error of one number for every step)
         
-        #calculate random tether errors for each time step ranging from -1in to 1in
+        # calculate random tether errors for each time step ranging from -1in to 1in
         if (i != 0):
-            err_teth_one_vec[i] = random.uniform(-(1/12),(1/12))
-            err_teth_two_vec[i] = random.uniform(-(1/12),(1/12))
-            err_teth_three_vec[i] = random.uniform(-(1/12),(1/12))
+            err_teth_one_vec[i] = random.uniform(-(0.5/12),(0.5/12))
+            err_teth_two_vec[i] = random.uniform(-(0.5/12),(0.5/12))
+            err_teth_three_vec[i] = random.uniform(-(0.5/12),(0.5/12))
+            # err_teth_one_vec[i] = 0
+            # err_teth_two_vec[i] = 0
+            # err_teth_three_vec[i] = 0
             apex = calculate_apex(teth_lengths[0]+err_teth_one_vec[i], teth_lengths[1]+err_teth_two_vec[i], teth_lengths[2]+err_teth_three_vec[i], teth_anchor, offset)
         else:
             err_teth_one_vec[i] = 0
