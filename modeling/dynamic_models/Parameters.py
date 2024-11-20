@@ -18,3 +18,6 @@ class Parameters:
     offset = [[-r,                      0.0,                     0.0],
               [-r*np.cos(225*np.pi/180), -r*np.sin(225*np.pi/180), 0.0],
               [-r*np.cos(135*np.pi/180), -r*np.sin(135*np.pi/180), 0.0]]
+    dt = 0.001
+    force_update_rate = 0.002
+    reaction_t = 0.01

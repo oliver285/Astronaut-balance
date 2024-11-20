@@ -145,18 +145,18 @@ def main(static_teth_length_err):
 
     # Time parameters
     duration = 2.0  # seconds (5 complete cycles at 1Hz)
-    dt = 0.001  # time step (essentially our sensor suite update rate)
+    dt = p.dt  # time step (essentially our sensor suite update rate)
     time_steps = int(duration / dt) + 1
     time_vec = np.linspace(0, duration, time_steps)
 
     # force update rate parameters
-    force_update_rate = 0.002  # time it takes to run tetrahedron calcs and update force command
+    force_update_rate = p.force_update_rate  # time it takes to run tetrahedron calcs and update force command
     update_steps = int(duration / force_update_rate) + 1
     update_vec = np.linspace(0, duration, update_steps)
     # separate iterator for force update
     j = 0
     # linear assumption for time it takes servo to reach new torque
-    reaction_t = 0.01  # seconds
+    reaction_t = p.reaction_t  # seconds
     # parameters defining old force and time for linear convergence
     f = np.array([[0.0], [0.0], [0.0]])
     f_new = np.array([[0.0], [0.0], [0.0]])

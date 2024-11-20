@@ -7,6 +7,7 @@ import Dynamic_model_3teth_revC
 import time
 
 
+
 def create_animated_scatter():
     # Generate data
     teth1_range = np.linspace(-1.0/12, 1.0/12, 5)
