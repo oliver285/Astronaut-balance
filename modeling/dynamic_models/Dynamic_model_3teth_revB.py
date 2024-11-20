@@ -105,32 +105,18 @@ def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
     
     positions = np.zeros((time_steps, 3))
 
-    if (tilt_axis.lower() == 'x') | (tilt_axis.lower() == 'y'):
-        for i in range(time_steps):
-            # Calculate new position based on tilt angles
-            # X position changes with forward/backward tilt (x_tilt)
-            x = initial_height * np.sin(x_tilt[i])
+    for i in range(time_steps):
+        # Calculate new position based on tilt angles
+        # X position changes with forward/backward tilt (x_tilt)
+        x = abs(initial_height) * np.sin(x_tilt[i])
 
-            # Y position changes with side-to-side tilt (y_tilt)
-            y = initial_height * np.sin(y_tilt[i])
+        # Y position changes with side-to-side tilt (y_tilt)
+        y = abs(initial_height) * np.sin(y_tilt[i])
 
-            # Z position decreases as person tilts
-            z = initial_height * np.cos(x_tilt[i]) * np.cos(y_tilt[i])
+        # Z position decreases as person tilts
+        z = (initial_height+ z_trans[i]) * np.cos(x_tilt[i]) * np.cos(y_tilt[i])
 
-            positions[i] = [x, y, z]
-    else:
-        for i in range(time_steps):
-            # Calculate new position based on tilt angles
-            # X position changes with forward/backward tilt (x_tilt)
-            x = 0
-
-            # Y position changes with side-to-side tilt (y_tilt)
-            y = 0
-
-            # Z position decreases as person tilts
-            z = initial_height + z_trans[i]
-
-            positions[i] = [x, y, z]
+        positions[i] = [x, y, z]
     
     return positions, np.column_stack((x_tilt, y_tilt))
 

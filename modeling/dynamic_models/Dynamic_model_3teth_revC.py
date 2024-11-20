@@ -1,15 +1,4 @@
-# This model attempts to quantify the update rate needed by the controller to keep the angle and force errors under the
-# threshold
-
-# major assumptions:
-#   uses the horizontal convergence method for doing the tetrahedron calcs which assumes the torso-tether attachment
-#       plane is parallel to the floor and that the torso does not twist
-#   assumes the tension change applied by the servos occurs in a linear time
-#   assumes the torso is in the shape of a circle with radius r and the attachment location is at the same height as the
-#       center of mass
-#
-# I am worried that this doesn't account for the fact that the actual control loop will run based off of changes in load
-# cell readings that drive length changes rather than the other way around
+# version C is uded for the length static error visualization
 
 import numpy as np
 from scipy.optimize import fsolve
