@@ -126,17 +126,32 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, t
     ax3.legend()
 
     # Force error plot
-    ax4 = fig.add_subplot(324)
+    fig4 = plt.figure(figsize=(10,8))
+    ax4 = fig4.add_subplot(111)
     ax4.plot(time_vec, f_errors)
+    ax4.axhline(y=5, color='r', linestyle=':', label='Max Allowable Error (5 lbf)', linewidth = 3)
+    ax4.set_xlabel('Time (s)')
     ax4.set_ylabel('Force Error (lbf)')
     ax4.set_title('Tether Force Error')
+    ax4.grid(True)
+    ax4.legend()
+    ax4.set_ylim([0, 8])
+    plt.tight_layout()
+    plt.savefig('plots/force_error_2teth.png')
 
     # Angular error plot
-    ax5 = fig.add_subplot(325)
+    fig5 = plt.figure(figsize=(10,8))
+    ax5 = fig5.add_subplot(111)
     ax5.plot(time_vec, ang_errors)
+    ax5.axhline(y=2, color='r', linestyle=':', label='Max Allowable Error (2 deg)', linewidth = 3)
     ax5.set_xlabel('Time (s)')
     ax5.set_ylabel('Angular Error (deg)')
     ax5.set_title('Tether Angular Error')
+    ax5.grid(True)
+    ax5.legend()
+    ax5.set_ylim([0, 4])
+    plt.tight_layout()
+    plt.savefig('plots/angular_error_2teth.png')
 
     # Torque magnitude plot
     ax6 = fig.add_subplot(326)
@@ -242,7 +257,7 @@ def main():
                 f = ((f_new - f_old) / reaction_t) * (t1 + reaction_t) - ((f_new - f_old) / reaction_t) * t1 + f_old
 
         # Calculate errors and torques
-        f_err, ang_err, tether1_vec[i], tether2_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
+        f_err, ang_err, tether1_vec[i], tether2_vec[i] = calculate_tether_error(apex, f, mass, teth_anchor, offset)
 
         # Store results
         f_errors[i] = f_err

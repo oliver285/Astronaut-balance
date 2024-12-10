@@ -340,12 +340,12 @@ def main():
         
         # calculate random tether errors for each time step ranging from -1in to 1in
         if (i != 0):
-            err_teth_one_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
-            err_teth_two_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
-            err_teth_three_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
-            # err_teth_one_vec[i] = 0
-            # err_teth_two_vec[i] = 0
-            # err_teth_three_vec[i] = 0
+            # err_teth_one_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
+            # err_teth_two_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
+            # err_teth_three_vec[i] = random.uniform(-teth_length_error_range,teth_length_error_range)
+            err_teth_one_vec[i] = 0
+            err_teth_two_vec[i] = 0
+            err_teth_three_vec[i] = 0
             apex = calculate_apex(teth_lengths[0]+err_teth_one_vec[i], teth_lengths[1]+err_teth_two_vec[i], teth_lengths[2]+err_teth_three_vec[i], teth_anchor, offset)
         else:
             err_teth_one_vec[i] = 0
@@ -379,7 +379,7 @@ def main():
                 f = ((f_new - f_old) / reaction_t) * (t1+reaction_t) - ((f_new - f_old) / reaction_t) * t1 + f_old
 
         # Calculate errors and torques
-        f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
+        f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(apex, f, mass, teth_anchor, offset)
 
         # Store results
         apex_error[i] = np.linalg.norm(COM-apex)
