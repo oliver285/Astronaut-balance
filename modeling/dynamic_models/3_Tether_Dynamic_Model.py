@@ -261,9 +261,9 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax11.plot(time_vec, err_teth_one_vec * 12, color = 'r')
     ax12.plot(time_vec, err_teth_two_vec * 12, color = 'g')
     ax13.plot(time_vec, err_teth_three_vec * 12, color = 'b')
-    ax11.set_ylabel('Tether 1 Length Error')
-    ax12.set_ylabel('Tether 2 Length Error')
-    ax13.set_ylabel('Tether 3 Length Error')
+    ax11.set_ylabel('Tether 1 Length Error (in)')
+    ax12.set_ylabel('Tether 2 Length Error (in)')
+    ax13.set_ylabel('Tether 3 Length Error (in)')
     fig10.suptitle(f'Tether Length Errors (Actual - Assumed), Max Hip Tilt = {max_hip_tilt} deg')
     for ax in [ax11, ax12, ax13]:
         ax.set_xlabel('Time (s)')
@@ -326,7 +326,7 @@ def main():
     p = Parameters.Parameters()
     # Simulation parameters
     mass = p.mass  # person's weight (lb)
-    max_hip_tilt = 5
+    max_hip_tilt = 10
     # tether anchor loc 3x3 each row is the vector for each tether
     # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
     teth_anchor = p.teth_anchor
