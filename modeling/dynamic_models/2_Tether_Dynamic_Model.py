@@ -271,7 +271,7 @@ def main():
     teth_anchor = p.teth_anchor
     offset = p.offset
     max_hip_tilt = 10
-    tilt_axis = 'z'
+    tilt_axis = 'y'
     # Time parameters
     duration = 3.0  # seconds (5 complete cycles at 1Hz)
     dt = p.dt # time step (essentially our sensor suite update rate)

@@ -3,7 +3,7 @@ import numpy as np
 class Parameters:
     mass = 100.0  # person's weight (lb)
     r = 2 / (2 * np.pi)  # waist radius (ft)
-    waist_height = 2.5
+    waist_height = -2.5
     # mass = 200.0  # person's weight (lb)
     # r = 3 / (2 * np.pi)  # waist radius (ft)
     # waist_height = -3.1
