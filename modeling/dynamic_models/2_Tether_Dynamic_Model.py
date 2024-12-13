@@ -74,7 +74,7 @@ def simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis):
     if tilt_axis.lower() == 'y':
         y_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.75 * time)  # ±10 degrees in y
     elif tilt_axis.lower() == 'z':
-        z_trans = 0.82021 * np.sin(2 * np.pi * 0.75 * time)
+        z_trans = (-0.82021 * np.cos(2 * np.pi * 0.75 * time) + 0.82021)/2
     else:
         raise ValueError("tilt_axis must be either 'y' or 'z'")
     
@@ -271,7 +271,7 @@ def main():
     teth_anchor = p.teth_anchor
     offset = p.offset
     max_hip_tilt = 10
-    tilt_axis = 'y'
+    tilt_axis = 'z'
     # Time parameters
     duration = 3.0  # seconds (5 complete cycles at 1Hz)
     dt = p.dt # time step (essentially our sensor suite update rate)
