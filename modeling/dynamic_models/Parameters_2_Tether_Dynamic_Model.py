@@ -3,6 +3,7 @@ import numpy as np
 class Parameters:
     mass = 200.0  # person's weight (lb)
     r = 3 / (2 * np.pi)  # waist radius (ft)
+    waist_height = 3.1
     teth_percent_error = 0.05  # percent error in tether length
 
     # tether anchor loc 3x3 each row is the vector for each tether

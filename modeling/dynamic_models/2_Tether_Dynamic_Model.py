@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-import Two_Tether_Parameters
+import Parameters_2_Tether_Dynamic_Model
 
 
 def equations(p, a, b, teth_anchor, offset):
@@ -61,11 +61,8 @@ def calculate_tether_error(COM, f, mass, teth_anchor, offset):
     return f_err, angle_err, teth1_vec, teth2_vec
 
 
-def simulate_tilting_motion(time_steps, dt, tilt_axis):
+def simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis):
     time = np.linspace(0, time_steps*dt, time_steps)
-    
-    # Initial position and height
-    initial_height = -3  # feet
     
     # Initialize tilt angles
     x_tilt = np.zeros_like(time)
@@ -265,11 +262,10 @@ def calculate_tether_lengths_rotated(harness_angle, COM, tether1_horz_coord, tet
     return right_length, left_length, right_harness_rotated, left_harness_rotated
 
 def main():
-    p = Two_Tether_Parameters.Parameters()
+    p = Parameters_2_Tether_Dynamic_Model.Parameters()
     # Simulation parameters
     mass = p.mass  # person's weight (lb)
-    r = p.r  # waist radius (ft)
-    teth_percent_error = 0.05  # percent error in tether length
+    initial_height = p.waist_height
     teth_anchor = p.teth_anchor
     offset = p.offset
     max_hip_tilt = 10
@@ -295,7 +291,7 @@ def main():
     t1 = 0
 
     # Generate COM movement and tilt angles
-    positions, tilt_angles = simulate_tilting_motion(time_steps, dt, tilt_axis)
+    positions, tilt_angles = simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis)
 
     # Initialize arrays to store results
     f_errors = np.zeros(time_steps)

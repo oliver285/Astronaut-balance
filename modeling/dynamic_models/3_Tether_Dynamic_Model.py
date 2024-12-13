@@ -83,11 +83,8 @@ def calculate_tether_error(COM, f, mass, teth_anchor, offset):
     return f_err, angle_err, teth1_vec,teth2_vec, teth3_vec
 
 
-def simulate_tilting_motion(time_steps, dt, tilt_axis='x'):
+def simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis='x'):
     time = np.linspace(0, time_steps*dt, time_steps)
-    
-    # Initial position and height
-    initial_height = -3  # feet
     
     # Initialize tilt angles
     x_tilt = np.zeros_like(time)
@@ -174,6 +171,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax3.legend()
     ax3.set_ylim([-5, 5])
     plt.tight_layout()
+    fig3.savefig('plots/3_tether_position')
     
     # Force error plot
     fig4 = plt.figure(figsize=figsize)
@@ -187,6 +185,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax4.legend()
     ax4.set_ylim([0, 8])
     plt.tight_layout()
+    fig4.savefig('plots/3_tether_force_error')
    
     
     # Angular error plot
@@ -201,6 +200,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax5.legend()
     ax5.set_ylim([0, 4])
     plt.tight_layout()
+    fig5.savefig('plots/3_tether_angular_error')
     
 
     # apex error plot
@@ -269,6 +269,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
         ax.set_xlabel('Time (s)')
         ax.grid(True)
         ax.set_ylim([-3, 3])
+    fig10.savefig('plots/3_tether_length_error')
     
      
 
@@ -327,6 +328,7 @@ def main():
     # Simulation parameters
     mass = p.mass  # person's weight (lb)
     max_hip_tilt = 10
+    initial_height = p.waist_height
     # tether anchor loc 3x3 each row is the vector for each tether
     # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
     teth_anchor = p.teth_anchor
@@ -362,7 +364,7 @@ def main():
     tilt_axis = 'x'
     
     # Generate COM movement and tilt angles
-    positions, tilt_angles = simulate_tilting_motion(time_steps, dt, tilt_axis)
+    positions, tilt_angles = simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis)
     apex_vec = np.zeros((time_steps, 3))
     
     # Initialize arrays to store results
@@ -433,7 +435,7 @@ def main():
             t1 = time_vec[i]
             j += 1
         # update force only at the prescribed update rate
-        elif abs(time_vec[i] - update_vec[j]) < dt/2:
+        elif time_vec[i] >= update_vec[j]:
             # f = calculate_tether_forces(apex, mass, teth_anchor, offset)
             f_new = calculate_tether_forces(apex, mass, teth_anchor, offset)
             f_old = f
@@ -449,7 +451,7 @@ def main():
                 f = ((f_new - f_old) / reaction_t) * (t1+reaction_t) - ((f_new - f_old) / reaction_t) * t1 + f_old
 
         # Calculate errors and torques
-        f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(COM, f, mass, teth_anchor, offset)
+        f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = calculate_tether_error(apex, f, mass, teth_anchor, offset)
 
         # Store results
         apex_error[i] = np.linalg.norm(COM-apex)
