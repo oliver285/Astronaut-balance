@@ -144,7 +144,7 @@ def main(static_teth_length_err):
     # teth_length_error_range = 0.0 / 12
 
     # Time parameters
-    duration = 2.0  # seconds (5 complete cycles at 1Hz)
+    duration = 1.0  # seconds (5 complete cycles at 1Hz)
     dt = p.dt  # time step (essentially our sensor suite update rate)
     time_steps = int(duration / dt) + 1
     time_vec = np.linspace(0, duration, time_steps)
