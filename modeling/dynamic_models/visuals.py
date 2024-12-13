@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-import Parameters
+import Parameters_3_Tether_Dynamic_Model
 
 def calculate_tether_vecs(COM, teth_anchor, offset):
     # determine the tether unit vector
@@ -63,7 +63,7 @@ def plot_tether_init_setup(teth_anchor, offset, COM, r):
 
 def main():
     COM = [0, 0, -2.5]
-    p = Parameters.Parameters()
+    p = Parameters_3_Tether_Dynamic_Model.Parameters()
     teth_anchor = p.teth_anchor
     offset = p.offset
     r = p.r
