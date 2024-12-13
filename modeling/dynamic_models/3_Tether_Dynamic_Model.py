@@ -16,7 +16,7 @@ from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import random
-import Parameters
+import Parameters_3_Tether_Dynamic_Model
 import time as timesec
 
 
@@ -323,7 +323,7 @@ def calculate_tether_lengths_rotated(harness_angle, COM, tether1_horz_coord, tet
     return front_length, back_left_length, back_right_length, front_harness_rotated, back_left_harness_rotated, back_right_harness_rotated
 
 def main():
-    p = Parameters.Parameters()
+    p = Parameters_3_Tether_Dynamic_Model.Parameters()
     # Simulation parameters
     mass = p.mass  # person's weight (lb)
     max_hip_tilt = 10
