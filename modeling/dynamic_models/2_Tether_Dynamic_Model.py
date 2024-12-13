@@ -97,6 +97,8 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     plt.style.use('default')
     figsize = (8, 8)
 
+    p = Parameters_2_Tether_Dynamic_Model.Parameters()
+
     norm_time = (time_vec - time_vec.min()) / (time_vec.max() - time_vec.min())
     
     # 3D trajectory plot
@@ -131,7 +133,6 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax3 = fig3.add_subplot(111)
     ax3.plot(time_vec, positions[:, 0], label='Y')
     ax3.plot(time_vec, positions[:, 1], label='Z')
-
     ax3.set_xlabel('Time (s)')
     ax3.set_ylabel('Position (ft)')
     ax3.set_title('Position Components Over Time')
@@ -139,6 +140,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax3.legend()
     ax3.set_ylim([-5, 5])
     plt.tight_layout()
+    fig3.savefig(f'plots_report/2_tether_position_{tilt_axis}_mass_{p.mass}.png')
     
     # Force error plot
     fig4 = plt.figure(figsize=figsize)
@@ -152,7 +154,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax4.legend()
     ax4.set_ylim([0, 8])
     plt.tight_layout()
-   
+    fig4.savefig(f'plots_report/2_tether_force_error_{tilt_axis}_mass_{p.mass}.png')
     
     # Angular error plot
     fig5 = plt.figure(figsize=figsize)
@@ -166,7 +168,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax5.legend()
     ax5.set_ylim([0, 4])
     plt.tight_layout()
-    
+    fig5.savefig(f'plots_report/2_tether_angular_error_{tilt_axis}_mass_{p.mass}.png')
 
     # apex error plot
     fig15 = plt.figure(figsize=figsize)
@@ -220,7 +222,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
         ax.set_xlabel('Time (s)')
         ax.grid(True)
         ax.set_ylim([-3, 3])
-    
+    fig10.savefig(f'plots_report/2_tether_length_error_{tilt_axis}_mass_{p.mass}.png')
      
 
     plt.tight_layout()
@@ -269,9 +271,9 @@ def main():
     teth_anchor = p.teth_anchor
     offset = p.offset
     max_hip_tilt = 10
-    tilt_axis = 'y'
+    tilt_axis = 'z'
     # Time parameters
-    duration = 5.0  # seconds (5 complete cycles at 1Hz)
+    duration = 3.0  # seconds (5 complete cycles at 1Hz)
     dt = p.dt # time step (essentially our sensor suite update rate)
     time_steps = int(duration / dt) + 1
     time_vec = np.linspace(0, duration, time_steps)
@@ -325,6 +327,7 @@ def main():
         # Calculate tether properties
         _, _, teth_lengths = calculate_tether_vecs(COM, teth_anchor, offset)
 
+        # tilte error included
         teth1_err = teth1_len_rotated[i] - teth_lengths[0]
         teth2_err = teth2_len_rotated[i] - teth_lengths[1]
 
@@ -342,7 +345,7 @@ def main():
             t1 = time_vec[i]
             j += 1
         # update force only at the prescribed update rate
-        elif abs(time_vec[i] - update_vec[j]) < dt / 2:
+        elif time_vec[i] >= update_vec[j]:
             # f = calculate_tether_forces(apex, mass, teth_anchor, offset)
             f_new = calculate_tether_forces(apex, mass, teth_anchor, offset)
             f_old = f

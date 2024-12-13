@@ -124,6 +124,8 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     plt.style.use('default')
     figsize = (8, 8)
 
+    p = Parameters_3_Tether_Dynamic_Model.Parameters()
+
     norm_time = (time_vec - time_vec.min()) / (time_vec.max() - time_vec.min())
     
     # 3D trajectory plot
@@ -171,7 +173,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax3.legend()
     ax3.set_ylim([-5, 5])
     plt.tight_layout()
-    fig3.savefig('plots/3_tether_position')
+    fig3.savefig(f'plots_report/3_tether_position_{tilt_axis}_mass_{p.mass}.png')
     
     # Force error plot
     fig4 = plt.figure(figsize=figsize)
@@ -185,7 +187,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax4.legend()
     ax4.set_ylim([0, 8])
     plt.tight_layout()
-    fig4.savefig('plots/3_tether_force_error')
+    fig4.savefig(f'plots_report/3_tether_force_error_{tilt_axis}_mass_{p.mass}.png')
    
     
     # Angular error plot
@@ -200,7 +202,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax5.legend()
     ax5.set_ylim([0, 4])
     plt.tight_layout()
-    fig5.savefig('plots/3_tether_angular_error')
+    fig5.savefig(f'plots_report/3_tether_angular_error_{tilt_axis}_mass_{p.mass}.png')
     
 
     # apex error plot
@@ -269,7 +271,7 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
         ax.set_xlabel('Time (s)')
         ax.grid(True)
         ax.set_ylim([-3, 3])
-    fig10.savefig('plots/3_tether_length_error')
+    fig10.savefig(f'plots_report/3_tether_length_error_{tilt_axis}_mass_{p.mass}.png')
     
      
 
@@ -322,6 +324,7 @@ def calculate_tether_lengths_rotated(harness_angle, COM, tether1_horz_coord, tet
     back_right_length = np.linalg.norm(back_right_harness_rotated - back_right_ground)
     
     return front_length, back_left_length, back_right_length, front_harness_rotated, back_left_harness_rotated, back_right_harness_rotated
+
 
 def main():
     p = Parameters_3_Tether_Dynamic_Model.Parameters()
@@ -399,7 +402,6 @@ def main():
     # Run simulation
     for i in range(time_steps):
         # Update COM position based on tilt
-        start_time = timesec.time()
         COM = positions[i, :]
         
         tether1_horz_coord[i] = COM - offset[0]
@@ -409,14 +411,10 @@ def main():
         # Calculate tether properties
         _, _, _, teth_lengths, teth1_rotated[i], teth2_rotated[i], _= calculate_tether_vecs(COM, teth_anchor, offset)
 
+        # tether error due to tilt
         teth1_err = teth1_len_rotated[i] - teth_lengths[0]
         teth2_err = teth2_len_rotated[i] - teth_lengths[1]
         teth3_err = teth3_len_rotated[i] - teth_lengths[2]
-
-     
-        # teth_lengths = teth_lengths + teth_percent_error * teth_lengths (adding tether error of one number for every step)
-        
-        # calculate random tether errors for each time step ranging from -1in to 1in
         
         err_teth_one_vec[i] = teth1_err
         err_teth_two_vec[i] = teth2_err
@@ -460,10 +458,7 @@ def main():
         teth1_length_horizontal[i] = teth_lengths[0]
         teth2_length_horizontal[i] = teth_lengths[1]
         teth3_length_horizontal[i] = teth_lengths[2]
-        end_time = timesec.time()
-        print(end_time - start_time)
         # torques[i] = np.linalg.norm(calculate_applied_torque(COM, tilt_angles[i, 0], tilt_angles[i, 1], f, r))
-        
 
     # Plot results
     plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, apex_error, torques, tilt_axis,
