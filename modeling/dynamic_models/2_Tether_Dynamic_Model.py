@@ -95,7 +95,7 @@ def simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis):
 def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, apex_error, torques, tilt_axis, tether1vec, tether2vec, err_teth_one_vec, err_teth_two_vec, max_hip_tilt):
     # Set figure size and style for all plots
     plt.style.use('default')
-    figsize = (8, 8)
+    figsize = (8, 4)
 
     p = Parameters_2_Tether_Dynamic_Model.Parameters()
 

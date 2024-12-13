@@ -122,7 +122,7 @@ def simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis='x'):
 def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, apex_error, torques, tilt_axis, tether1vec, tether2vec, tether3vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec, max_hip_tilt):
     # Set figure size and style for all plots
     plt.style.use('default')
-    figsize = (8, 8)
+    figsize = (8, 4)
 
     p = Parameters_3_Tether_Dynamic_Model.Parameters()
 
@@ -364,7 +364,7 @@ def main():
     t1 = 0
     
     # Set tilt axis ('x' or 'y')
-    tilt_axis = 'x'
+    tilt_axis = 'y'
     
     # Generate COM movement and tilt angles
     positions, tilt_angles = simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis)
