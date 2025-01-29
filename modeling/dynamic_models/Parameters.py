@@ -7,11 +7,18 @@ class Parameters:
 
     # tether anchor loc 3x3 each row is the vector for each tether
     # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
+    # teth_anchor = [[2.0,                      0.0,                     0.0],
+    #               [2.0*np.cos(240*np.pi/180), 2.0*np.sin(240*np.pi/180), 0.0],
+    #               [2.0*np.cos(120*np.pi/180), 2.0*np.sin(120*np.pi/180), 0.0]]
     teth_anchor = [[2.0,                      0.0,                     0.0],
-                  [2.0*np.cos(240*np.pi/180), 2.0*np.sin(240*np.pi/180), 0.0],
-                  [2.0*np.cos(120*np.pi/180), 2.0*np.sin(120*np.pi/180), 0.0]]
+                  [2.0*np.cos(225*np.pi/180), 2.0*np.sin(225*np.pi/180), 0.0],
+                  [2.0*np.cos(135*np.pi/180), 2.0*np.sin(135*np.pi/180), 0.0]]
     # attachment offset vector 3x3 each row is the vector for each tether
     # assuming circular radius (pointing from tether attachment loc to COM
     offset = [[-r,                      0.0,                     0.0],
-              [-r*np.cos(240*np.pi/180), -r*np.sin(240*np.pi/180), 0.0],
-              [-r*np.cos(120*np.pi/180), -r*np.sin(120*np.pi/180), 0.0]]
+              [-r*np.cos(225*np.pi/180), -r*np.sin(225*np.pi/180), 0.0],
+              [-r*np.cos(135*np.pi/180), -r*np.sin(135*np.pi/180), 0.0]]
+    dt = 0.001
+    force_update_rate = 0.002
+    reaction_t = 0.02
+    

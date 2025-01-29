@@ -19,7 +19,7 @@ def equations(p, a, b, c, r):
 
 def calculate_apex(a, b, c, r):
     initial_guess = [2, 2, 4]  # Start with a point above the base
-    temp = fsolve(equations, initial_guess, args=(a, b, c, r))
+    temp = fsolve(equations, np.array(initial_guess), args=(a, b, c, r))
     apex = [[temp[0]], [temp[1]], [temp[2]]]
     return apex
 
@@ -45,9 +45,9 @@ def calculate_tether_length(COM, r):
     teth2_attach_loc = np.array(COM) + np.array([[r*np.cos(210*np.pi/180)], [r*np.sin(210*np.pi/180)], [0]])
     teth3_attach_loc = np.array(COM) + np.array([[r*np.cos(330*np.pi/180)], [r*np.sin(330*np.pi/180)], [0]])
     teth_lengths = np.array([[0.0], [0.0], [0.0]])
-    teth_lengths[0] = np.linalg.norm(teth1_attach_loc - np.array([[0.0], [2.0], [0.0]]))
-    teth_lengths[1] = np.linalg.norm(teth2_attach_loc - np.array([[2*np.cos(210*np.pi/180)], [2*np.sin(210*np.pi/180)], [0]]))
-    teth_lengths[2] = np.linalg.norm(teth3_attach_loc - np.array([[2*np.cos(330*np.pi/180)], [2*np.sin(330*np.pi/180)], [0]]))
+    teth_lengths[0] = np.linalg.norm(np.array([[0.0], [2.0], [0.0]]) - teth1_attach_loc)
+    teth_lengths[1] = np.linalg.norm(np.array([[2*np.cos(210*np.pi/180)], [2*np.sin(210*np.pi/180)], [0]]) - teth2_attach_loc)
+    teth_lengths[2] = np.linalg.norm(np.array([[2*np.cos(330*np.pi/180)], [2*np.sin(330*np.pi/180)], [0]]) - teth3_attach_loc)
     return teth_lengths
 
 def calculate_applied_torque(COM, theta, psi, f, r):
@@ -56,11 +56,11 @@ def calculate_applied_torque(COM, theta, psi, f, r):
     teth2_attach_loc_bf = np.array(COM) + np.array([[r*np.cos(210*np.pi/180)], [r*np.sin(210*np.pi/180)], [0]])
     teth3_attach_loc_bf = np.array(COM) + np.array([[r*np.cos(330*np.pi/180)], [r*np.sin(330*np.pi/180)], [0]])
     # _basef signifies base frame
-    r2 = np.array([[np.cos(theta), 0,  -np.sin(theta)],
-                   [0,             1,  0],
-                   [np.sin(theta), 0,  np.cos(theta)]])
-    r3 = np.array([[np.cos(psi),  np.sin(psi), 0],
-                   [-np.sin(psi), np.cos(psi), 0],
+    r2 = np.array([[1, 0, 0],
+                   [0, np.cos(theta), -np.sin(theta)],
+                   [0, np.sin(theta), np.cos(theta)]])
+    r3 = np.array([[np.cos(psi),  -np.sin(psi), 0],
+                   [np.sin(psi), np.cos(psi), 0],
                    [0,            0,           1]])
     # rotate z to align y-axis, rotate y-axis and rotate z again to get to base frame
     rot = np.linalg.inv(r3) @ np.linalg.inv(r2) @ r3
@@ -102,11 +102,11 @@ def calculate_tether_error(COM, theta, psi, f, mass, r):
     teth2_attach_loc_bf = np.array(COM) + np.array([[r*np.cos(210*np.pi/180)], [r*np.sin(210*np.pi/180)], [0]])
     teth3_attach_loc_bf = np.array(COM) + np.array([[r*np.cos(330*np.pi/180)], [r*np.sin(330*np.pi/180)], [0]])
     # _basef signifies base frame
-    r2 = np.array([[np.cos(theta), 0,  -np.sin(theta)],
-                   [0,             1,  0],
-                   [np.sin(theta), 0,  np.cos(theta)]])
-    r3 = np.array([[np.cos(psi),  np.sin(psi), 0],
-                   [-np.sin(psi), np.cos(psi), 0],
+    r2 = np.array([[1, 0,             0],
+                   [0, np.cos(theta), -np.sin(theta)],
+                   [0, np.sin(theta), np.cos(theta)]])
+    r3 = np.array([[np.cos(psi),  -np.sin(psi), 0],
+                   [np.sin(psi), np.cos(psi), 0],
                    [0,            0,           1]])
     # rotate z to align y-axis, rotate y-axis and rotate z again to get to base frame
     rot = np.linalg.inv(r3) @ np.linalg.inv(r2) @ r3
@@ -117,6 +117,7 @@ def calculate_tether_error(COM, theta, psi, f, mass, r):
     teth1_init_vec = np.array([[0.0], [2.0], [0.0]]) - teth1_attach_loc_basef
     teth2_init_vec = np.array([[2*np.cos(210*np.pi/180)], [2*np.sin(210*np.pi/180)], [0]]) - teth2_attach_loc_basef
     teth3_init_vec = np.array([[2*np.cos(330*np.pi/180)], [2*np.sin(330*np.pi/180)], [0]]) - teth3_attach_loc_basef
+    teth_l_tilted = [np.linalg.norm(teth1_init_vec), np.linalg.norm(teth2_init_vec), np.linalg.norm(teth3_init_vec)]
     teth1_vec = f[0][0]*(teth1_init_vec/np.linalg.norm(teth1_init_vec))
     teth2_vec = f[1][0]*(teth2_init_vec/np.linalg.norm(teth2_init_vec))
     teth3_vec = f[2][0]*(teth3_init_vec/np.linalg.norm(teth3_init_vec))
@@ -129,7 +130,7 @@ def calculate_tether_error(COM, theta, psi, f, mass, r):
     angle_err = np.acos(np.dot(expected_f_vec, f_vec)/(np.linalg.norm(expected_f_vec)*np.linalg.norm(f_vec)))*(180/np.pi)
     f_err = np.abs(np.linalg.norm(expected_f_vec) - np.linalg.norm(f_vec))
 
-    return f_err, angle_err
+    return f_err, angle_err, teth_l_tilted
 
 
 def plot_error(psi_vec, f_err, ang_err):
@@ -146,12 +147,24 @@ def plot_error(psi_vec, f_err, ang_err):
     plt.ylabel("tether vec angle error (deg)")
     plt.savefig("plots/hip_tilt_errors.png")
 
+
 def plot_torque(psi_vec, torque):
     psi_vec = np.rad2deg(psi_vec)
     plt.figure(2)
     plt.plot(psi_vec, torque)
     plt.ylabel("torque applied (lb*ft)")
     plt.title("torque applied vs changes in rotation about center of platform")
+
+
+def plot_teth_length_diff(psi_vec, teth_lengths_horz, teth_lengths_tilted):
+    psi_vec = np.rad2deg(psi_vec)
+    plt.figure(3)
+    teth_length_diff = teth_lengths_tilted - teth_lengths_horz
+    plt.plot(psi_vec, teth_length_diff)
+    plt.ylabel("length diff (ft)")
+    plt.title("tether length difference")
+    plt.legend(["tether1", "tether2", "tether3"])
+
 
 def main():
     # persons weight (lb)
@@ -168,17 +181,19 @@ def main():
     # psi = np.deg2rad(0.)
     psi_vec = np.deg2rad(np.linspace(0, 360, 100))
 
-    f_err = np.zeros(100)
-    ang_err = np.zeros(100)
-    torque_vec = np.zeros((3, 100))
-    torque = np.zeros(100)
-    for (psi, i) in zip(psi_vec, range(100)):
+    f_err = np.zeros(len(psi_vec))
+    ang_err = np.zeros(len(psi_vec))
+    teth_lengths_horz = np.zeros((len(psi_vec),3))
+    teth_lengths_tilted = np.zeros((len(psi_vec),3))
+    torque_vec = np.zeros((3, len(psi_vec)))
+    torque = np.zeros(len(psi_vec))
+    for (psi, i) in zip(psi_vec, range(len(psi_vec))):
         # rotation matrix using the euler angles to get our base frame COM
-        r2 = np.array([[np.cos(theta), 0, -np.sin(theta)],
-                       [0, 1, 0],
-                       [np.sin(theta), 0, np.cos(theta)]])
-        r3 = np.array([[np.cos(psi), np.sin(psi), 0],
-                       [-np.sin(psi), np.cos(psi), 0],
+        r2 = np.array([[1, 0,             0],
+                       [0, np.cos(theta), -np.sin(theta)],
+                       [0, np.sin(theta), np.cos(theta)]])
+        r3 = np.array([[np.cos(psi), -np.sin(psi), 0],
+                       [np.sin(psi), np.cos(psi), 0],
                        [0, 0, 1]])
         # rotate z to align y-axis, rotate y-axis and rotate z again to get to base frame
         rot = np.linalg.inv(r3) @ np.linalg.inv(r2) @ r3
@@ -189,18 +204,20 @@ def main():
         a = teth_lengths[0][0]
         b = teth_lengths[1][0]
         c = teth_lengths[2][0]
+        teth_lengths_horz[i, :] = [a, b, c]
 
         apex = calculate_apex(a, b, c, r)
         # print("tether convergence point: ", apex)
         f = calculate_tether_forces(apex, mass, r)
 
-        f_err[i], ang_err[i] = calculate_tether_error(COM_bf, theta, psi, f, mass, r)
+        f_err[i], ang_err[i], teth_lengths_tilted[i,:] = calculate_tether_error(COM_bf, theta, psi, f, mass, r)
         torque_vec[:, i] = calculate_applied_torque(COM_bf, theta, psi, f, r)
         torque[i] = np.linalg.norm(torque_vec[:, i])
 
 
     plot_error(psi_vec, f_err, ang_err)
     plot_torque(psi_vec, torque)
+    plot_teth_length_diff(psi_vec, teth_lengths_horz, teth_lengths_tilted)
     # print("force error (lb): ", f_err)
     # print("angular error (deg): ", ang_err)
     print(torque)
