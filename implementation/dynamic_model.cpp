@@ -46,14 +46,15 @@
  */
 
 #include "ClearCore.h"
-#include <cmath>
-#include<ArduinoEigenDense.h>
+//#include <cmath>
+#include <BasicLinearAlgebra.h>
 
-using namespace Eigen;
+using namespace BLA;
+//using namespace Eigen;
 // The INPUT_A_FILTER must match the Input A filter setting in
 // MSP (Advanced >> Input A, B Filtering...)
 #define INPUT_A_FILTER 20
-#include <array> // For std::array
+//#include <array> // For std::array
 // Defines the motor's connector as ConnectorM0
 #define motor ConnectorM0
 
@@ -80,34 +81,39 @@ double maxTorque = 100;
 
 */
 
-MatrixXd calculate_tether_vecs(VectorXd COM, MatrixXd teth_anchor, MatrixXd offset) {
+BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3, 3, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
     // Define tether vectors
-    VectorXd tethvec1(3), tethvec2(3), tethvec3(3);
-    VectorXd teth1_hat(3), teth2_hat(3), teth3_hat(3);
+    BLA::Matrix<3, 1, float> tethvec1, tethvec2, tethvec3;
+    BLA::Matrix<3, 1, float> teth1_hat, teth2_hat, teth3_hat;
 
     // Compute tether vectors
     for (int i = 0; i < 3; i++) {
-        tethvec1(i) = teth_anchor(0, i) - (COM(i) - offset(0, i));
-        tethvec2(i) = teth_anchor(1, i) - (COM(i) - offset(1, i));
-        tethvec3(i) = teth_anchor(2, i) - (COM(i) - offset(2, i));
+        tethvec1(i, 0) = teth_anchor(i, 0) - (COM(i, 0) - offset(i, 0));
+        tethvec2(i, 0) = teth_anchor(i, 1) - (COM(i, 0) - offset(i, 1));
+        tethvec3(i, 0) = teth_anchor(i, 2) - (COM(i, 0) - offset(i, 2));
     }
 
     // Normalize tether vectors to get unit vectors
-    teth1_hat = tethvec1 / tethvec1.norm();
-    teth2_hat = tethvec2 / tethvec2.norm();
-    teth3_hat = tethvec3 / tethvec3.norm();
+    teth1_hat = tethvec1 / sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
+    teth2_hat = tethvec2 / sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
+    teth3_hat = tethvec3 / sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
 
-    // Define result matrix (3x4) → Columns: unit vectors, Last row: lengths
-    MatrixXd ANS(3, 4);
-    ANS.col(0) = teth1_hat;
-    ANS.col(1) = teth2_hat;
-    ANS.col(2) = teth3_hat;
-    ANS(0, 3) = tethvec1.norm();  // Lengths
-    ANS(1, 3) = tethvec2.norm();
-    ANS(2, 3) = tethvec3.norm();
+    // Define result matrix (3x4)
+    BLA::Matrix<3, 4, float> ANS;
+    for (int i = 0; i < 3; i++) {
+ANS(0,i) = teth1_hat(i);
+ANS(1,i) = teth1_hat(i);
+ANS(2,i) = teth1_hat(i);
+
+    }
+
+    ANS(0, 3) = sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
+    ANS(1, 3) = sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
+    ANS(2, 3) = sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
 
     return ANS;
 }
+
 
 /*
 def calculate_tether_forces(apex, mass, teth_anchor, offset):
@@ -123,26 +129,30 @@ def calculate_tether_forces(apex, mass, teth_anchor, offset):
 
 */
 
-VectorXd calculate_tether_forces(VectorXd apex,int mass,MatrixXd teth_anchor, MatrixXd offset){
+BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3, 3, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
+    // Compute unit vectors
+    BLA::Matrix<3, 4, float> Initial_Matrix = calculate_tether_vecs(apex, teth_anchor, offset);
 
- MatrixXd Initial_Matrix(3, 4) = calculate_tether_vecs(apex, teth_anchor, offset);
-MatrixXd M1(3,3);
+    // Extract the first 3 columns as a 3x3 matrix
+    BLA::Matrix<3, 3, float> M1;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            M1(i, j) = Initial_Matrix(i, j);
+        }
+    }
 
-for(int i=0;i<3;i++){
-for(int j=0;j<3;j++){
-M1(i,j)= Initial_Matrix(i,j);
+    // Define force matrix M2
+    BLA::Matrix<3, 1, float> M2;
+    M2(0, 0) = 0;
+    M2(1, 0) = 0;
+    M2(2, 0) = mass;
 
-}
-
-}
-VectorXd M2(3);
- M2<<0,0,mass;
- // Solve for forces using matrix inverse
-    VectorXd F = M1.inverse() * M2;
+    // Solve for forces using matrix inversion
+    BLA::Matrix<3, 1, float> F = Inverse(M1) * M2;  // Using "~" for inverse in BLA
 
     return F;  // Return the calculated tether forces
-
 }
+
 void setup() {
     // Put your setup code here, it will only run once:
 
@@ -208,6 +218,7 @@ void loop() {
  * Returns: True/False depending on whether the torque was successfully
  * commanded.
  */
+ 
 bool CommandTorque(int commandedTorque) {
     if (abs(commandedTorque) > abs(maxTorque)) {
         Serial.println("Move rejected, invalid torque requested");
