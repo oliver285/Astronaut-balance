@@ -48,12 +48,14 @@
 #include "ClearCore.h"
 //#include <cmath>
 #include <BasicLinearAlgebra.h>
+#include <math.h>
 
 using namespace BLA;
 //using namespace Eigen;
 // The INPUT_A_FILTER must match the Input A filter setting in
 // MSP (Advanced >> Input A, B Filtering...)
 #define INPUT_A_FILTER 20
+#define DEG_TO_RAD(angle) ((angle) * (M_PI / 180.0))  // Convert degrees to radians
 //#include <array> // For std::array
 // Defines the motor's connector as ConnectorM0
 #define motor ConnectorM0
@@ -81,7 +83,7 @@ double maxTorque = 100;
 
 */
 
-BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3, 3, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
+BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
     // Define tether vectors
     BLA::Matrix<3, 1, float> tethvec1, tethvec2, tethvec3;
     BLA::Matrix<3, 1, float> teth1_hat, teth2_hat, teth3_hat;
@@ -129,7 +131,7 @@ def calculate_tether_forces(apex, mass, teth_anchor, offset):
 
 */
 
-BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3, 3, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
+BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
     // Compute unit vectors
     BLA::Matrix<3, 4, float> Initial_Matrix = calculate_tether_vecs(apex, teth_anchor, offset);
 
@@ -148,13 +150,67 @@ BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3, 3, float> apex, 
     M2(2, 0) = mass;
 
     // Solve for forces using matrix inversion
-    BLA::Matrix<3, 1, float> F = Inverse(M1) * M2;  // Using "~" for inverse in BLA
+    BLA::Matrix<3, 1, float> F = Inverse(M1) * M2;  // 
 
     return F;  // Return the calculated tether forces
 }
 
+void testMatrixFunctions() {
+    Serial.println("Running Matrix Function Tests...");
+
+    // Define test input matrices
+    BLA::Matrix<3, 1, float> COM = { 1.0, 2.0, 3.0,
+                                   };
+
+    BLA::Matrix<3, 3, float> teth_anchor = { 10.0, 11.0, 12.0,
+                                             13.0, 14.0, 15.0,
+                                             16.0, 17.0, 18.0 };
+
+    BLA::Matrix<3, 3, float> offset = { 1.0, 1.0, 1.0,
+                                        1.0, 1.0, 1.0,
+                                        1.0, 1.0, 1.0 };
+
+    int mass = 200; // Example mass value
+
+    // Call calculate_tether_vecs
+    Serial.println("\nTesting calculate_tether_vecs...");
+    BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
+
+    Serial.println("Tether Vectors Result:");
+    printMatrix(tether_vectors);
+
+    // Call calculate_tether_forces
+    Serial.println("\nTesting calculate_tether_forces...");
+    BLA::Matrix<3, 1, float> tether_forces = calculate_tether_forces(COM, mass, teth_anchor, offset);
+
+    Serial.println("Tether Forces Result:");
+    printMatrix(tether_forces);
+
+    Serial.println("\nMatrix Function Tests Completed.");
+}
+
+// Helper function to print matrices
+template<int rows, int cols, class T>
+void printMatrix(BLA::Matrix<rows, cols, T> mat) {
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            Serial.print(mat(i, j), 6); // Print 6 decimal places
+            Serial.print("\t");
+        }
+        Serial.println();
+    }
+}
+
+
 void setup() {
     // Put your setup code here, it will only run once:
+
+    Serial.begin(9600); // Start serial communication
+
+    while (!Serial) { } // Wait for serial connection
+
+    testMatrixFunctions(); // Run matrix function tests
+
 
     // Sets all motor connectors to the correct mode for Follow Digital
     // Torque mode.
@@ -180,11 +236,52 @@ void setup() {
         continue;
     }
     Serial.println("Motor Ready");
+
+
 }
 
 
 void loop() {
+
+
+float teth1_posX = analogRead(B1); // pins will be adjusted for microcontroller
+float teth1_posY = analogRead(B0);
+float teth1_posZ = analogRead(B1);
+
+float teth2_posX = analogRead(B1); // pins will be adjusted for microcontroller
+float teth2_posY = analogRead(B1);
+float teth2_posZ = analogRead(B1);
+
+float teth3_posX = analogRead(B1); // pins will be adjusted for microcontroller
+float teth3_posY = analogRead(B1);
+float teth3_posZ = analogRead(B1);
+
+ float r = 1.0;  // Example radius value
+ int mass = 200;
+ BLA::Matrix<3,1,float> apex = {1,2,3}; 
+
+    // Compute tether attachment points
+    BLA::Matrix<3, 3, float> teth_anchor = { 
+         2.0, 0.0, 0.0 ,  
+         2.0 * cos(DEG_TO_RAD(225)), 2.0 * sin(DEG_TO_RAD(225)), 0.0 ,  
+        2.0 * cos(DEG_TO_RAD(135)), 2.0 * sin(DEG_TO_RAD(135)), 0.0  
+    };
+
+    // Compute attachment offset vectors
+    BLA::Matrix<3, 3, float> offset = { 
+         -r, 0.0, 0.0 ,  
+         -r * cos(DEG_TO_RAD(225)), -r * sin(DEG_TO_RAD(225)), 0.0 ,  
+        -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
+    };
     // Put your main code here, it will run repeatedly:
+
+
+
+
+  //BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
+
+  BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
+
 
     // Output 15% of the motor's peak torque in the positive (CCW) direction.
     CommandTorque(15);    // See below for the detailed function definition.
