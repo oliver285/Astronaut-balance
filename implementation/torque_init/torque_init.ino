@@ -46,22 +46,37 @@
  */
 
 #include "ClearCore.h"
+#include <Keypad.h>
 
 // The INPUT_A_FILTER must match the Input A filter setting in
 // MSP (Advanced >> Input A, B Filtering...)
 #define INPUT_A_FILTER 20
 
 // Defines the motor's connector as ConnectorM0
+#define ioPort ConnectorUsb
 #define motor ConnectorM0
 
 // Select the baud rate to match the target device.
 #define baudRate 115200
+#define ioPortBaudRate  115200
 
 // define digital pin inputs being used //
 
 // Defines the limit of the torque command, as a percent of the motor's peak
 // torque rating (must match the value used in MSP).
 double maxTorque = 10;
+
+// char input = '0';
+
+// temporary may be used later
+#define IN_BUFFER_LEN 32
+char input[IN_BUFFER_LEN+1];
+char temp[IN_BUFFER_LEN+1];
+uint32_t i;
+double t_init = 0;
+
+// flag to tell input 3 to normalize millis()
+bool test_start = true;
 
 // Declares our user-defined helper function, which is used to command torque.
 // The definition/implementation of this function is at the bottom of the sketch.
@@ -71,7 +86,12 @@ void setup() {
     // Put your setup code here, it will only run once:
 
     // set digital and analog pins as inputs //
-
+    ioPort.Mode(Connector::USB_CDC);  
+    ioPort.Speed(ioPortBaudRate);
+    ioPort.PortOpen();
+    while (!ioPort) {
+      continue;
+    }
     // Sets all motor connectors to the correct mode for Follow Digital
     // Torque mode.
     MotorMgr.MotorModeSet(MotorManager::MOTOR_ALL,
@@ -86,16 +106,17 @@ void setup() {
         continue;
     }
 
+
     // Enables the motor
 
-    motor.EnableRequest(true);
+    motor.EnableRequest(false);
     Serial.println("Motor Enabled");
 
     // Waits for HLFB to assert (waits for homing to complete if applicable)
-    Serial.println("Waiting for HLFB...");
-    while (motor.HlfbState() != MotorDriver::HLFB_ASSERTED) {
-        continue;
-    }
+    // Serial.println("Waiting for HLFB...");
+    // while (motor.HlfbState() != MotorDriver::HLFB_ASSERTED) {
+    //     continue;
+    // }
     Serial.println("Motor Ready");
 }
 
@@ -106,21 +127,89 @@ void loop() {
     // analog and digital read //
     // analog adc convert (load cell) //
     // digital (encoder input) //
+    i = 0;
+    strcpy(temp, input);
+    while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
+      input[i] = (char) ioPort.CharGet();
+      i++;
+      // valid_input_flag
+	  Delay_ms(1);
+    }
 
+    Serial.print("-----------\n");
+    Serial.println(input[0]);
+    Serial.println(temp[0]);
+    Serial.print("----------\n");
 
+    switch(input[0]){
+      case '1':
+        // Serial.print("input 1 \n");
 
-    // serial output for both length and load cell value
+        if(motor.EnableRequest()){
+          motor.EnableRequest(false);
+          Serial.print("motor disabled \n");
+        }
+        // motor.EnableRequest(false); // Disable motor
+        break;
 
+      case '2':
+        if(!test_start){
+          test_start = true;
+        }
+        // Serial.print("input 2 \n");
+        // Serial.println(motor.EnableRequest());
+        if(!motor.EnableRequest()){
+          motor.EnableRequest(true);
+          Serial.print("motor enabled \n");
+        }
+        CommandTorque(5);    // See below for the detailed function definition.
+        // Wait 2000ms.
+        delay(2000);
+
+        CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
+        delay(2000);
+        break;
+
+      case '3':
+        if (temp[0] == '1'){
+          Serial.print("Invalid jump \n");
+          strcpy(input, temp);
+          break;
+        }
+
+        if(test_start){
+          t_init = millis();
+          test_start = false;
+        }
+        CommandTorque(5);    // See below for the detailed function definition.
+        // Wait 2000ms.
+        delay(2000);
+
+        Serial.println(String(millis() - t_init, 4) + ", meas1, meas2, meas3");
+        // time, meas1, meas2, meas3
+
+        CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
+        delay(2000);
+
+        Serial.println(String(millis() - t_init, 4) + ", meas1, meas2, meas3");
+        break;
+
+      default:
+        Serial.print("Invalid input \n");
+        break;
+    }
+
+    delay(500);
     // // Output 15% of the motor's peak torque in the positive (CCW) direction.
-    CommandTorque(5);    // See below for the detailed function definition.
-    // Wait 2000ms.
-    delay(2000);
+    // CommandTorque(5);    // See below for the detailed function definition.
+    // // Wait 2000ms.
+    // delay(2000);
 
-    CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
-    delay(2000);
+    // CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
+    // delay(2000);
 
 
-
+    
 }
 
 /*------------------------------------------------------------------------------
@@ -142,9 +231,9 @@ bool CommandTorque(int commandedTorque) {
         Serial.println("Move rejected, invalid torque requested");
         return false;
     }
-
-    Serial.print("Commanding torque: ");
-    Serial.println(commandedTorque);
+	
+    // Serial.print("Commanding torque: ");
+    // Serial.println(commandedTorque);
 
     // Find the scaling factor of our torque range mapped to the PWM duty cycle
     // range (255 is the max duty cycle).
@@ -160,8 +249,6 @@ bool CommandTorque(int commandedTorque) {
     else {
         motor.MotorInAState(false);
     }
-
-
     // Ensures this delay is at least 20ms longer than the Input A filter
     // setting in MSP
     delay(20 + INPUT_A_FILTER);
@@ -170,23 +257,24 @@ bool CommandTorque(int commandedTorque) {
     motor.MotorInBDuty(dutyRequest);
 
     // Waits for HLFB to assert (signaling the move has successfully completed)
-    Serial.println("Moving... Waiting for HLFB");
+    // Serial.println("Moving... Waiting for HLFB");
     // Allow some time for HLFB to transition
     delay(1);
 
-    // //if (motor.HlfbState() != MotorDriver::HLFB_ASSERTED) {
-    //   Serial.println("Motor Fault or Overspeed Timeout Detected!");
-    //   delay(5000);
-    //   motor.EnableRequest(false); // Disable motor
-    //   delay(500);
-    //   motor.EnableRequest(true);  // Re-enable motor
-    // }
+    // TODO: careful about this, auto reenables after unasserted hlfb
+    if (motor.HlfbState() != MotorDriver::HLFB_ASSERTED) {
+      Serial.println("Motor Fault or Overspeed Timeout Detected!");
+      delay(5000);
+      motor.EnableRequest(false); // Disable motor
+      delay(500);
+      motor.EnableRequest(true);  // Re-enable motor
+    }
 
     while(motor.HlfbState() != MotorDriver::HLFB_ASSERTED){
 
       continue;
     }
-    Serial.println("Move Done");
+    // Serial.println("Move Done");
     return true;
 }
 //------------------------------------------------------------------------------
