@@ -65,6 +65,7 @@
 // Defines the limit of the torque command, as a percent of the motor's peak
 // torque rating (must match the value used in MSP).
 double maxTorque = 10;
+double currCommand = 0;
 
 // char input = '0';
 
@@ -72,11 +73,12 @@ double maxTorque = 10;
 #define IN_BUFFER_LEN 32
 char input[IN_BUFFER_LEN+1];
 char temp[IN_BUFFER_LEN+1];
-uint32_t i;
 double t_init = 0;
 
 // flag to tell input 3 to normalize millis()
-bool test_start = true;
+bool test_start = false;
+// flag to tell input 2 whether to ask for input torque
+bool torque_input_needed = true;
 
 // Declares our user-defined helper function, which is used to command torque.
 // The definition/implementation of this function is at the bottom of the sketch.
@@ -127,7 +129,7 @@ void loop() {
     // analog and digital read //
     // analog adc convert (load cell) //
     // digital (encoder input) //
-    i = 0;
+    int i = 0;
     strcpy(temp, input);
     while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
       input[i] = (char) ioPort.CharGet();
@@ -136,25 +138,63 @@ void loop() {
 	  Delay_ms(1);
     }
 
-    Serial.print("-----------\n");
-    Serial.println(input[0]);
-    Serial.println(temp[0]);
-    Serial.print("----------\n");
+    // Serial.print("-----------\n");
+    // Serial.println(input[0]);
+    // Serial.println(temp[0]);
+    // Serial.println(i);
+    // Serial.print("----------\n");
+
 
     switch(input[0]){
       case '1':
+        {
+        torque_input_needed = false;
         // Serial.print("input 1 \n");
-
         if(motor.EnableRequest()){
           motor.EnableRequest(false);
           Serial.print("motor disabled \n");
         }
         // motor.EnableRequest(false); // Disable motor
         break;
+        }
 
       case '2':
-        if(!test_start){
-          test_start = true;
+        {
+        char force_input[IN_BUFFER_LEN+1];
+        double force_input_double;
+        double torque_input;
+        bool valid_input = false;
+        if(!torque_input_needed){
+          test_start = false;
+          torque_input_needed = true;
+          while(!valid_input){
+            // wait for force input
+            force_input_double = 0;
+            torque_input = 0;
+            memset(force_input, 0, sizeof(force_input));
+            i = 0;
+            Serial.print("input desired force \n");
+            while(ioPort.CharPeek() == -1){
+              continue;
+            }
+            while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
+              force_input[i] = (char) ioPort.CharGet();
+              i++;
+              // valid_input_flag
+              Delay_ms(1);  
+            }
+            // convert input to double
+            force_input_double = atof(force_input);
+            // placeholder for force to torque conversion
+            torque_input = force_input_double;
+            if (torque_input > maxTorque){
+              Serial.println("torque input:" + String(torque_input) + ", is greater than max torque:" + String(maxTorque) + "\n");
+            }
+            else{
+              valid_input = true;
+              currCommand = torque_input;
+            }
+          }
         }
         // Serial.print("input 2 \n");
         // Serial.println(motor.EnableRequest());
@@ -162,37 +202,36 @@ void loop() {
           motor.EnableRequest(true);
           Serial.print("motor enabled \n");
         }
-        CommandTorque(5);    // See below for the detailed function definition.
-        // Wait 2000ms.
-        delay(2000);
 
-        CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
-        delay(2000);
+
+        CommandTorque(currCommand);    // See below for the detailed function definition.
+        // Wait 2000ms.
+
         break;
+        }
 
       case '3':
+        {
         if (temp[0] == '1'){
           Serial.print("Invalid jump \n");
           strcpy(input, temp);
           break;
         }
 
-        if(test_start){
+        if(!test_start){
           t_init = millis();
-          test_start = false;
+          test_start = true;
         }
-        CommandTorque(5);    // See below for the detailed function definition.
+        Serial.println(currCommand);
+        CommandTorque(currCommand);    // See below for the detailed function definition.
         // Wait 2000ms.
-        delay(2000);
-
-        Serial.println(String(millis() - t_init, 4) + ", meas1, meas2, meas3");
+        double hlfbP = motor.HlfbPercent();
+        Serial.println(hlfbP);
+        Serial.println(String(millis() - t_init, 4) + ", 1, " + String(motor.HlfbPercent()) + ", meas1, meas2, meas3");
+        delay(200);
         // time, meas1, meas2, meas3
-
-        CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
-        delay(2000);
-
-        Serial.println(String(millis() - t_init, 4) + ", meas1, meas2, meas3");
         break;
+        }
 
       default:
         Serial.print("Invalid input \n");
