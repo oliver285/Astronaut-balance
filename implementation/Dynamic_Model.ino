@@ -46,7 +46,7 @@
  */
 
 #include "ClearCore.h"
-//#include <cmath>
+#include <cmath>
 #include <BasicLinearAlgebra.h>
 #include <math.h>
 
@@ -59,7 +59,8 @@ using namespace BLA;
 //#include <array> // For std::array
 // Defines the motor's connector as ConnectorM0
 #define motor ConnectorM0
-
+#define Maxiterations 50
+#define TOL 1e-6 
 // Select the baud rate to match the target device.
 #define baudRate 9600
 
@@ -82,6 +83,251 @@ double maxTorque = 100;
     return (teth1_hat, teth2_hat, teth3_hat, lengths)
 
 */
+
+// Vec equations(const Vec& p, double a, double b, double c, const vector<Vec>& teth_anchor, const vector<Vec>& offset) {
+//     double x = p[0], y = p[1], z = p[2];
+
+//     return {
+//         pow(x - (teth_anchor[0][0] + offset[0][0]), 2) + 
+//         pow(y - (teth_anchor[0][1] + offset[0][1]), 2) + 
+//         pow(z - (teth_anchor[0][2] + offset[0][2]), 2) - a * a,
+
+//         pow(x - (teth_anchor[1][0] + offset[1][0]), 2) + 
+//         pow(y - (teth_anchor[1][1] + offset[1][1]), 2) + 
+//         pow(z - (teth_anchor[1][2] + offset[1][2]), 2) - b * b,
+
+//         pow(x - (teth_anchor[2][0] + offset[2][0]), 2) + 
+//         pow(y - (teth_anchor[2][1] + offset[2][1]), 2) + 
+//         pow(z - (teth_anchor[2][2] + offset[2][2]), 2) - c * c
+//     };
+// }
+
+BLA::Matrix<3, 1, float> equations(BLA::Matrix<3,1, float> p, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset,BLA::Matrix<3,1, float> tether_lengths){
+
+
+double x = p(0), y = p(1), z = p(2);
+
+ return {
+    pow(x - (teth_anchor(0,0) + offset(0,0)), 2) + 
+    pow(y - (teth_anchor(0,1) + offset(0,1)), 2) + 
+    pow(z - (teth_anchor(0,2) + offset(0,2)), 2) - tether_lengths(1) * tether_lengths(1),
+
+    pow(x - (teth_anchor(1,0) + offset(1,0)), 2) + 
+    pow(y - (teth_anchor(1,1) + offset(1,1)), 2) + 
+    pow(z - (teth_anchor(1,2) + offset(1,2)), 2) - tether_lengths(2) * tether_lengths(2),
+
+    pow(x - (teth_anchor(2,0) + offset(2,0)), 2) + 
+    pow(y - (teth_anchor(2,1) + offset(2,1)), 2) + 
+    pow(z - (teth_anchor(2,2) + offset(2,2)), 2) - tether_lengths(3) * tether_lengths(3)
+};
+
+
+
+
+}
+
+
+
+// // Function to compute the Jacobian matrix using finite differences
+// Mat jacobian(const Vec& p, double a, double b, double c, const vector<Vec>& teth_anchor, const vector<Vec>& offset) {
+//     Mat J(3, Vec(3));
+//     double h = 1e-5;  // Small step for numerical differentiation
+
+//     for (int i = 0; i < 3; i++) {
+//         Vec p1 = p, p2 = p;
+//         p1[i] += h;
+//         p2[i] -= h;
+
+//         Vec f1 = equations(p1, a, b, c, teth_anchor, offset);
+//         Vec f2 = equations(p2, a, b, c, teth_anchor, offset);
+
+//         for (int j = 0; j < 3; j++) {
+//             J[j][i] = (f1[j] - f2[j]) / (2 * h);  // Central difference approximation
+//         }
+//     }
+
+//     return J;
+// }
+
+BLA::Matrix<3, 3, float> jacobian(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset){
+
+BLA::Matrix<3, 3, float> J;
+double h = 1e-5;
+BLA::Matrix<3,1, float> p1;
+BLA::Matrix<3,1, float> p2;
+BLA::Matrix<3,1, float> f1;
+BLA::Matrix<3,1, float> f2;
+for(int i=0;i<3;i++){
+p1(i)= p(i)+h;
+p2(i)=p(i)-h;
+f1 = equations(p1,teth_anchor, offset,tether_lengths);
+f2 = equations(p2,teth_anchor, offset,tether_lengths);
+
+  for (int j = 0; j < 3; j++) {
+J(j,i) = (f1(j)-f2(j))/(2*h);
+  }
+
+}
+return J;
+}
+
+
+
+// // Function to solve Ax = b using Gaussian elimination
+// Vec solveLinearSystem(Mat A, Vec b) {
+//     int n = A.size();
+
+//     for (int i = 0; i < n; i++) {
+//         // Partial pivoting (if necessary)
+//         int maxRow = i;
+//         for (int k = i + 1; k < n; k++) {
+//             if (fabs(A[k][i]) > fabs(A[maxRow][i])) {
+//                 maxRow = k;
+//             }
+//         }
+//         swap(A[i], A[maxRow]);
+//         swap(b[i], b[maxRow]);
+
+//         if (fabs(A[i][i]) < 1e-10) {
+//             throw runtime_error("Jacobian is singular, Newton's method failed.");
+//         }
+
+//         // Forward elimination
+//         for (int k = i + 1; k < n; k++) {
+//             double factor = A[k][i] / A[i][i];
+//             for (int j = i; j < n; j++) {
+//                 A[k][j] -= factor * A[i][j];
+//             }
+//             b[k] -= factor * b[i];
+//         }
+//     }
+
+//     // Back substitution
+//     Vec x(n);
+//     for (int i = n - 1; i >= 0; i--) {
+//         x[i] = b[i];
+//         for (int j = i + 1; j < n; j++) {
+//             x[i] -= A[i][j] * x[j];
+//         }
+//         x[i] /= A[i][i];
+//     }
+
+//     return x;
+// }
+
+void swap(float& a, float& b) {
+    float temp = a;
+    a = b;
+    b = temp;
+}
+
+BLA::Matrix<3, 1, float> solveLinearSystem(BLA::Matrix<3, 3, float> A, BLA::Matrix<3, 1, float> b) {
+
+  BLA::Matrix<3, 1, float> x;
+int maxRow;
+double factor;
+for(int i=0;i<3;i++){
+maxRow= i;
+for(int k=i+1;k<3;k++){
+
+   if (fabs(A(k,i)) > fabs(A(maxRow,i))) {
+        maxRow = k;
+             }
+
+
+}
+
+swap(A(i), A(maxRow));
+ swap(b(i), b(maxRow));
+
+ //         if (fabs(A[i][i]) < 1e-10) {
+//             throw runtime_error("Jacobian is singular, Newton's method failed.");
+//         } very unlikely with set up but can test if something goes wrong
+
+// Forward elimination
+        for (int k = i + 1; k < 3; k++) {
+             factor = A(k,i) / A(i,i);
+            for (int j = i; j < 3; j++) {
+                A(k,j) -= factor * A(i,j);
+            }
+            b(k) -= factor * b(i);
+        }
+    }
+
+        // Back substitution
+ 
+    for (int i = 3 - 1; i >= 0; i--) {
+        x(i) = b(i);
+        for (int j = i + 1; j < 3; j++) {
+            x(i) -= A(i,j) * x(j);
+        }
+        x(i) /= A(i,i);
+    }
+
+    return x;
+
+}
+
+
+
+
+
+
+
+// // Newton's method solver
+// Vec newtonSolve(Vec p0, double a, double b, double c, const vector<Vec>& teth_anchor, const vector<Vec>& offset) {
+//     Vec p = p0;
+
+//     for (int iter = 0; iter < MAX_ITER; iter++) {
+//         Vec F = equations(p, a, b, c, teth_anchor, offset);
+//         Mat J = jacobian(p, a, b, c, teth_anchor, offset);
+
+//         // Solve J * delta_p = -F
+//         Vec delta_p = solveLinearSystem(J, {-F[0], -F[1], -F[2]});
+
+//         // Update solution
+//         for (int i = 0; i < 3; i++) {
+//             p[i] += delta_p[i];
+//         }
+
+//         // Check for convergence
+//         double norm = sqrt(delta_p[0] * delta_p[0] + delta_p[1] * delta_p[1] + delta_p[2] * delta_p[2]);
+//         if (norm < TOL) {
+//             return p;
+//         }
+//     }
+
+//     throw runtime_error("Newton's method did not converge.");
+// }
+   
+BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset){
+BLA::Matrix<3, 1, float> F;
+BLA::Matrix<3, 1, float> delta_p;
+BLA::Matrix<3, 3, float> J;
+double norm;
+for(int iter=0;iter<Maxiterations;iter++){
+F = equations( p,  teth_anchor, offset, tether_lengths);
+J= jacobian(p,tether_lengths,teth_anchor, offset);
+// Solve J * delta_p = -F
+ delta_p = solveLinearSystem(J, -F);
+
+//update solution
+ for (int i = 0; i < 3; i++) {
+            p(i) += delta_p(i);
+        }
+
+        // Check for convergence
+       norm = sqrt(delta_p(0) * delta_p(0) + delta_p(1) * delta_p(1) + delta_p(2) * delta_p(2));
+        if (norm < TOL) {
+            return p;
+        }
+
+}
+
+
+}
+
+
 
 BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
     // Define tether vectors
