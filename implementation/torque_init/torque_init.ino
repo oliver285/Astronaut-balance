@@ -131,6 +131,7 @@ void loop() {
     // digital (encoder input) //
     int i = 0;
     strcpy(temp, input);
+    // read the serial port input
     while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
       input[i] = (char) ioPort.CharGet();
       i++;
