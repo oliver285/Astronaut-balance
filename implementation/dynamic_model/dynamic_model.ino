@@ -49,6 +49,13 @@
 #include <cmath>
 #include <BasicLinearAlgebra.h>
 #include <math.h>
+#include <Keypad.h>
+
+// The INPUT_A_FILTER must match the Input A filter setting in
+// MSP (Advanced >> Input A, B Filtering...)
+
+// Defines the motor's connector as ConnectorM0
+#define ioPort ConnectorUsb
 
 using namespace BLA;
 //using namespace Eigen;
@@ -59,6 +66,7 @@ using namespace BLA;
 //#include <array> // For std::array
 // Defines the motor's connector as ConnectorM0
 #define motor ConnectorM0
+
 #define Maxiterations 50
 #define TOL 1e-6 
 // Select the baud rate to match the target device.
@@ -401,12 +409,10 @@ BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, i
     return F;  // Return the calculated tether forces
 }
 
-void testMatrixFunctions() {
-    Serial.println("Running Matrix Function Tests...");
+//void testMatrixFunctions() {
+    //Serial.println("Running Matrix Function Tests...");
 
-    // Define test input matrices
-    BLA::Matrix<3, 1, float> COM = { 1.0, 2.0, 3.0,
-                                   };
+  
 
     BLA::Matrix<3, 3, float> teth_anchor = { 10.0, 11.0, 12.0,
                                              13.0, 14.0, 15.0,
@@ -419,21 +425,21 @@ void testMatrixFunctions() {
     int mass = 200; // Example mass value
 
     // Call calculate_tether_vecs
-    Serial.println("\nTesting calculate_tether_vecs...");
-    BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
+    // Serial.println("\nTesting calculate_tether_vecs...");
+    // BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
 
-    Serial.println("Tether Vectors Result:");
-    printMatrix(tether_vectors);
+    // Serial.println("Tether Vectors Result:");
+    // printMatrix(tether_vectors);
 
-    // Call calculate_tether_forces
-    Serial.println("\nTesting calculate_tether_forces...");
-    BLA::Matrix<3, 1, float> tether_forces = calculate_tether_forces(COM, mass, teth_anchor, offset);
+    // // Call calculate_tether_forces
+    // Serial.println("\nTesting calculate_tether_forces...");
+    // BLA::Matrix<3, 1, float> tether_forces = calculate_tether_forces(COM, mass, teth_anchor, offset);
 
-    Serial.println("Tether Forces Result:");
-    printMatrix(tether_forces);
+    // Serial.println("Tether Forces Result:");
+    // printMatrix(tether_forces);
 
-    Serial.println("\nMatrix Function Tests Completed.");
-}
+    // Serial.println("\nMatrix Function Tests Completed.");
+
 
 // Helper function to print matrices
 template<int rows, int cols, class T>
@@ -447,6 +453,11 @@ void printMatrix(BLA::Matrix<rows, cols, T> mat) {
     }
 }
 
+// temporary may be used later
+#define IN_BUFFER_LEN 32
+double input[IN_BUFFER_LEN+1];
+//float temp[IN_BUFFER_LEN+1];
+double t_init = 0;
 
 void setup() {
     // Put your setup code here, it will only run once:
@@ -455,7 +466,7 @@ void setup() {
 
     while (!Serial) { } // Wait for serial connection
 
-    testMatrixFunctions(); // Run matrix function tests
+    //testMatrixFunctions(); // Run matrix function tests
 
 
     // Sets all motor connectors to the correct mode for Follow Digital
@@ -490,22 +501,25 @@ void setup() {
 void loop() {
 
 
-float teth1_posX = analogRead(B1); // pins will be adjusted for microcontroller
-float teth1_posY = analogRead(B0);
-float teth1_posZ = analogRead(B1);
+// float teth1_posX = analogRead(B1); // pins will be adjusted for microcontroller
+// float teth1_posY = analogRead(B0);
+// float teth1_posZ = analogRead(B1);
 
-float teth2_posX = analogRead(B1); // pins will be adjusted for microcontroller
-float teth2_posY = analogRead(B1);
-float teth2_posZ = analogRead(B1);
+// float teth2_posX = analogRead(B1); // pins will be adjusted for microcontroller
+// float teth2_posY = analogRead(B1);
+// float teth2_posZ = analogRead(B1);
 
-float teth3_posX = analogRead(B1); // pins will be adjusted for microcontroller
-float teth3_posY = analogRead(B1);
-float teth3_posZ = analogRead(B1);
+// float teth3_posX = analogRead(B1); // pins will be adjusted for microcontroller
+// float teth3_posY = analogRead(B1);
+// float teth3_posZ = analogRead(B1);
 
  float r = 1.0;  // Example radius value
  int mass = 200;
- BLA::Matrix<3,1,float> apex = {1,2,3}; 
-
+//  BLA::Matrix<3,1,float> apex = {1,2,3}; 
+BLA::Matrix<3, 1, float> lengths;
+BLA::Matrix<3, 1, float> p;
+p = {2,2,-4};
+BLA::Matrix<3, 1, float> apex;
     // Compute tether attachment points
     BLA::Matrix<3, 3, float> teth_anchor = { 
          2.0, 0.0, 0.0 ,  
@@ -520,31 +534,49 @@ float teth3_posZ = analogRead(B1);
         -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
     };
     // Put your main code here, it will run repeatedly:
+  int i = 0;
+ // strcpy(temp, input);
 
+  while(i<3 && ioPort.CharPeek() != -1){
+   Serial.println("Enter tether length " + String(i) + "\n");
+
+      input[i] = (float) ioPort.CharGet();
+      i++;
+      // valid_input_flag
+	  Delay_ms(1);
+    }
+
+lengths(1) = input[1];
+lengths(2) = input[2];
+lengths(3) = input[3];
+
+ apex =newtonSolve( p, lengths, teth_anchor, offset);
+
+Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
 
 
 
   //BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
 
-  BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
+  //BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
 
 
-    // Output 15% of the motor's peak torque in the positive (CCW) direction.
-    CommandTorque(15);    // See below for the detailed function definition.
-    // Wait 2000ms.
-    delay(2000);
+    // // Output 15% of the motor's peak torque in the positive (CCW) direction.
+    // CommandTorque(15);    // See below for the detailed function definition.
+    // // Wait 2000ms.
+    // delay(2000);
 
-    CommandTorque(-75); // Output 75% peak torque in the negative (CW) direction.
-    delay(2000);
+    // CommandTorque(-75); // Output 75% peak torque in the negative (CW) direction.
+    // delay(2000);
 
-    CommandTorque(5); // Output 5% peak torque in the positive (CCW) direction.
-    delay(2000);
+    // CommandTorque(5); // Output 5% peak torque in the positive (CCW) direction.
+    // delay(2000);
 
-    CommandTorque(-35); // Output 35% peak torque in the negative (CW) direction.
-    delay(2000);
+    // CommandTorque(-35); // Output 35% peak torque in the negative (CW) direction.
+    // delay(2000);
 
-    CommandTorque(10); // Output 10% peak torque in the positive (CCW) direction.
-    delay(2000);
+    // CommandTorque(10); // Output 10% peak torque in the positive (CCW) direction.
+    // delay(2000);
 }
 
 /*------------------------------------------------------------------------------
