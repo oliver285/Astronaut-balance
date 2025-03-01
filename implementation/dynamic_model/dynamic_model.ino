@@ -1,4 +1,16 @@
 /*
+BUGS: solveSystem returning wrong deltap values (becomes NaNs)
+*/
+
+
+
+
+
+
+
+
+
+/*
  * Title: FollowDigitalTorque
  *
  * Objective:
