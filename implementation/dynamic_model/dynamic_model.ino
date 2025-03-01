@@ -57,6 +57,15 @@
 // Defines the motor's connector as ConnectorM0
 #define ioPort ConnectorUsb
 
+// algorithm function headers
+BLA::Matrix<3, 1, float> equations(BLA::Matrix<3,1, float> p, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset,BLA::Matrix<3,1, float> tether_lengths);
+BLA::Matrix<3, 3, float> jacobian(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset);
+void swap(float& a, float& b);
+BLA::Matrix<3, 1, float> solveSystem(BLA::Matrix<3, 3, float> A, BLA::Matrix<3, 1, float> b);
+BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset);
+BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset);
+BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset);
+
 using namespace BLA;
 //using namespace Eigen;
 // The INPUT_A_FILTER must match the Input A filter setting in
@@ -78,313 +87,355 @@ using namespace BLA;
 // torque rating (must match the value used in MSP).
 double maxTorque = 100;
 
-/*def calculate_tether_vecs(COM, teth_anchor, offset):
-    # determine the tether unit vector
-    teth1_vec = np.array(teth_anchor[0][:]) - (np.array(COM) - np.array(offset[0][:]))
-    teth2_vec = np.array(teth_anchor[1][:]) - (np.array(COM) - np.array(offset[1][:]))
-    teth3_vec = np.array(teth_anchor[2][:]) - (np.array(COM) - np.array(offset[2][:]))
-    teth1_hat = teth1_vec/np.linalg.norm(teth1_vec)
-    teth2_hat = teth2_vec/np.linalg.norm(teth2_vec)
-    teth3_hat = teth3_vec/np.linalg.norm(teth3_vec)
-    lengths = np.array([np.linalg.norm(teth1_vec),np.linalg.norm(teth2_vec),np.linalg.norm(teth3_vec)])
-
-    return (teth1_hat, teth2_hat, teth3_hat, lengths)
-
-*/
-
-// Vec equations(const Vec& p, double a, double b, double c, const vector<Vec>& teth_anchor, const vector<Vec>& offset) {
-//     double x = p[0], y = p[1], z = p[2];
-
-//     return {
-//         pow(x - (teth_anchor[0][0] + offset[0][0]), 2) + 
-//         pow(y - (teth_anchor[0][1] + offset[0][1]), 2) + 
-//         pow(z - (teth_anchor[0][2] + offset[0][2]), 2) - a * a,
-
-//         pow(x - (teth_anchor[1][0] + offset[1][0]), 2) + 
-//         pow(y - (teth_anchor[1][1] + offset[1][1]), 2) + 
-//         pow(z - (teth_anchor[1][2] + offset[1][2]), 2) - b * b,
-
-//         pow(x - (teth_anchor[2][0] + offset[2][0]), 2) + 
-//         pow(y - (teth_anchor[2][1] + offset[2][1]), 2) + 
-//         pow(z - (teth_anchor[2][2] + offset[2][2]), 2) - c * c
-//     };
-// }
-
-BLA::Matrix<3, 1, float> equations(BLA::Matrix<3,1, float> p, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset,BLA::Matrix<3,1, float> tether_lengths){
+// temporary may be used later
+#define IN_BUFFER_LEN 32
+double input[IN_BUFFER_LEN+1];
+//float temp[IN_BUFFER_LEN+1];
+double t_init = 0;
 
 
-double x = p(0), y = p(1), z = p(2);
+// helper function to print matrices
+template<int rows, int cols, typename T>
+void printMatrix(const BLA::Matrix<rows, cols, T>& mat) {
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            Serial.print(mat(i, j), 6); // Print 6 decimal places
+            Serial.print("\t");
+        }
+        Serial.println();
+    }
+}
 
- return {
+
+void setup() {
+    // Put your setup code here, it will only run once:
+
+    Serial.begin(115200); // Start serial communication
+
+    while (!Serial) { } // Wait for serial connection
+
+    // Sets up serial communication and waits up to 5 seconds for a port to open
+    // Serial communication is not required for this example to run
+    Serial.begin(baudRate);
+    uint32_t timeout = 5000;
+    uint32_t startTime = millis();
+    while (!Serial && millis() - startTime < timeout) {
+        continue;
+    }
+
+
+
+
+
+
+
+
+
+
+    // temp
+      float r = 1.0;  // Example radius value
+  int mass = 200;
+  //  BLA::Matrix<3,1,float> apex = {1,2,3}; 
+  BLA::Matrix<3, 1, float> lengths = {
+    5.0,
+    5.0,
+    5.0
+  };
+  BLA::Matrix<3, 1, float> p = {2.0,2.0,-4.0};
+  BLA::Matrix<3, 1, float> apex;
+  // Compute tether attachment points
+  BLA::Matrix<3, 3, float> teth_anchor = { 
+      2.0, 0.0, 0.0 ,  
+      2.0 * cos(DEG_TO_RAD(225)), 2.0 * sin(DEG_TO_RAD(225)), 0.0 ,  
+      2.0 * cos(DEG_TO_RAD(135)), 2.0 * sin(DEG_TO_RAD(135)), 0.0  
+  };
+
+  // Compute attachment offset vectors
+  BLA::Matrix<3, 3, float> offset = { 
+      -r, 0.0, 0.0 ,  
+      -r * cos(DEG_TO_RAD(225)), -r * sin(DEG_TO_RAD(225)), 0.0 ,  
+      -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
+  };
+  // Put your main code here, it will run repeatedly:
+
+  // int i = 0;
+  // strcpy(temp, input);
+
+
+  // while(i<3 && ioPort.CharPeek() != -1){
+  // Serial.println("Enter tether length " + String(i) + "\n");
+
+  //   input[i] = (float) ioPort.CharGet();
+  //   i++;
+  //   // valid_input_flag
+  // Delay_ms(1);
+  // }
+
+  // lengths(1) = input[1];
+  // lengths(2) = input[2];
+  // lengths(3) = input[3];
+
+
+  Serial.print("-----------------------------------------------------------------------------------------------\n");
+  apex =newtonSolve( p, lengths, teth_anchor, offset);
+  Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
+}
+
+
+void loop() {
+  // // float teth1_posX = analogRead(B1); // pins will be adjusted for microcontroller
+  // // float teth1_posY = analogRead(B0);
+  // // float teth1_posZ = analogRead(B1);
+
+  // // float teth2_posX = analogRead(B1); // pins will be adjusted for microcontroller
+  // // float teth2_posY = analogRead(B1);
+  // // float teth2_posZ = analogRead(B1);
+
+  // // float teth3_posX = analogRead(B1); // pins will be adjusted for microcontroller
+  // // float teth3_posY = analogRead(B1);
+  // // float teth3_posZ = analogRead(B1);
+
+  // float r = 1.0;  // Example radius value
+  // int mass = 200;
+  // //  BLA::Matrix<3,1,float> apex = {1,2,3}; 
+  // BLA::Matrix<3, 1, float> lengths = {
+  //   5.0,
+  //   5.0,
+  //   5.0
+  // };
+  // BLA::Matrix<3, 1, float> p = {2.0,2.0,-4.0};
+  // BLA::Matrix<3, 1, float> apex;
+  // // Compute tether attachment points
+  // BLA::Matrix<3, 3, float> teth_anchor = { 
+  //     2.0, 0.0, 0.0 ,  
+  //     2.0 * cos(DEG_TO_RAD(225)), 2.0 * sin(DEG_TO_RAD(225)), 0.0 ,  
+  //     2.0 * cos(DEG_TO_RAD(135)), 2.0 * sin(DEG_TO_RAD(135)), 0.0  
+  // };
+
+  // // Compute attachment offset vectors
+  // BLA::Matrix<3, 3, float> offset = { 
+  //     -r, 0.0, 0.0 ,  
+  //     -r * cos(DEG_TO_RAD(225)), -r * sin(DEG_TO_RAD(225)), 0.0 ,  
+  //     -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
+  // };
+  // // Put your main code here, it will run repeatedly:
+
+  // // int i = 0;
+  // // strcpy(temp, input);
+
+
+  // // while(i<3 && ioPort.CharPeek() != -1){
+  // // Serial.println("Enter tether length " + String(i) + "\n");
+
+  // //   input[i] = (float) ioPort.CharGet();
+  // //   i++;
+  // //   // valid_input_flag
+  // // Delay_ms(1);
+  // // }
+
+  // // lengths(1) = input[1];
+  // // lengths(2) = input[2];
+  // // lengths(3) = input[3];
+
+
+
+  // apex =newtonSolve( p, lengths, teth_anchor, offset);
+
+  // Serial.println("lengths : " + String(lengths(0)) + ", " + String(lengths(1)) + ", " + String(lengths(2)) + "\n");
+  // Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
+  // // delay(5000);
+
+
+  // //BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
+
+  // //BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
+
+
+  // // // Output 15% of the motor's peak torque in the positive (CCW) direction.
+  // // CommandTorque(15);    // See below for the detailed function definition.
+  // // // Wait 2000ms.
+  // // delay(2000);
+
+  // // CommandTorque(-75); // Output 75% peak torque in the negative (CW) direction.
+  // // delay(2000);
+
+  // // CommandTorque(5); // Output 5% peak torque in the positive (CCW) direction.
+  // // delay(2000);
+
+  // // CommandTorque(-35); // Output 35% peak torque in the negative (CW) direction.
+  // // delay(2000);
+
+  // // CommandTorque(10); // Output 10% peak torque in the positive (CCW) direction.
+  // // delay(2000);
+}
+
+
+
+
+// returns equations for the apex 
+BLA::Matrix<3, 1, float> equations(BLA::Matrix<3,1, float> p, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset, BLA::Matrix<3,1, float> tether_lengths){
+  double x = p(0), y = p(1), z = p(2);
+
+  return {
     pow(x - (teth_anchor(0,0) + offset(0,0)), 2) + 
     pow(y - (teth_anchor(0,1) + offset(0,1)), 2) + 
-    pow(z - (teth_anchor(0,2) + offset(0,2)), 2) - tether_lengths(1) * tether_lengths(1),
+    pow(z - (teth_anchor(0,2) + offset(0,2)), 2) - tether_lengths(0) * tether_lengths(0),
 
     pow(x - (teth_anchor(1,0) + offset(1,0)), 2) + 
     pow(y - (teth_anchor(1,1) + offset(1,1)), 2) + 
-    pow(z - (teth_anchor(1,2) + offset(1,2)), 2) - tether_lengths(2) * tether_lengths(2),
+    pow(z - (teth_anchor(1,2) + offset(1,2)), 2) - tether_lengths(1) * tether_lengths(1),
 
     pow(x - (teth_anchor(2,0) + offset(2,0)), 2) + 
     pow(y - (teth_anchor(2,1) + offset(2,1)), 2) + 
-    pow(z - (teth_anchor(2,2) + offset(2,2)), 2) - tether_lengths(3) * tether_lengths(3)
-};
-
-
-
-
+    pow(z - (teth_anchor(2,2) + offset(2,2)), 2) - tether_lengths(2) * tether_lengths(2)
+  };  
 }
 
 
 
-// // Function to compute the Jacobian matrix using finite differences
-// Mat jacobian(const Vec& p, double a, double b, double c, const vector<Vec>& teth_anchor, const vector<Vec>& offset) {
-//     Mat J(3, Vec(3));
-//     double h = 1e-5;  // Small step for numerical differentiation
-
-//     for (int i = 0; i < 3; i++) {
-//         Vec p1 = p, p2 = p;
-//         p1[i] += h;
-//         p2[i] -= h;
-
-//         Vec f1 = equations(p1, a, b, c, teth_anchor, offset);
-//         Vec f2 = equations(p2, a, b, c, teth_anchor, offset);
-
-//         for (int j = 0; j < 3; j++) {
-//             J[j][i] = (f1[j] - f2[j]) / (2 * h);  // Central difference approximation
-//         }
-//     }
-
-//     return J;
-// }
-
+// Function to compute the Jacobian matrix using finite differences
 BLA::Matrix<3, 3, float> jacobian(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset){
 
-BLA::Matrix<3, 3, float> J;
-double h = 1e-5;
-BLA::Matrix<3,1, float> p1;
-BLA::Matrix<3,1, float> p2;
-BLA::Matrix<3,1, float> f1;
-BLA::Matrix<3,1, float> f2;
-for(int i=0;i<3;i++){
-p1(i)= p(i)+h;
-p2(i)=p(i)-h;
-f1 = equations(p1,teth_anchor, offset,tether_lengths);
-f2 = equations(p2,teth_anchor, offset,tether_lengths);
+  BLA::Matrix<3, 3, float> J;
+  double h = 1e-5;
+  BLA::Matrix<3,1, float> p1;
+  BLA::Matrix<3,1, float> p2;
+  BLA::Matrix<3,1, float> f1;
+  BLA::Matrix<3,1, float> f2;
+  for(int i=0;i<3;i++){
+    p1(i)= p(i)+h;
+    p2(i)=p(i)-h;
+    f1 = equations(p1,teth_anchor, offset,tether_lengths);
+    f2 = equations(p2,teth_anchor, offset,tether_lengths);
 
-  for (int j = 0; j < 3; j++) {
-J(j,i) = (f1(j)-f2(j))/(2*h);
+    for (int j = 0; j < 3; j++) {
+      J(j,i) = (f1(j)-f2(j))/(2*h); 
+    }
   }
-
-}
-return J;
+  return J;
 }
 
-
-
-// // Function to solve Ax = b using Gaussian elimination
-// Vec solveLinearSystem(Mat A, Vec b) {
-//     int n = A.size();
-
-//     for (int i = 0; i < n; i++) {
-//         // Partial pivoting (if necessary)
-//         int maxRow = i;
-//         for (int k = i + 1; k < n; k++) {
-//             if (fabs(A[k][i]) > fabs(A[maxRow][i])) {
-//                 maxRow = k;
-//             }
-//         }
-//         swap(A[i], A[maxRow]);
-//         swap(b[i], b[maxRow]);
-
-//         if (fabs(A[i][i]) < 1e-10) {
-//             throw runtime_error("Jacobian is singular, Newton's method failed.");
-//         }
-
-//         // Forward elimination
-//         for (int k = i + 1; k < n; k++) {
-//             double factor = A[k][i] / A[i][i];
-//             for (int j = i; j < n; j++) {
-//                 A[k][j] -= factor * A[i][j];
-//             }
-//             b[k] -= factor * b[i];
-//         }
-//     }
-
-//     // Back substitution
-//     Vec x(n);
-//     for (int i = n - 1; i >= 0; i--) {
-//         x[i] = b[i];
-//         for (int j = i + 1; j < n; j++) {
-//             x[i] -= A[i][j] * x[j];
-//         }
-//         x[i] /= A[i][i];
-//     }
-
-//     return x;
-// }
-
+// swap rows
 void swap(float& a, float& b) {
     float temp = a;
     a = b;
     b = temp;
 }
 
-BLA::Matrix<3, 1, float> solveLinearSystem(BLA::Matrix<3, 3, float> A, BLA::Matrix<3, 1, float> b) {
-
+// solve system by doing things
+BLA::Matrix<3, 1, float> solveSystem(BLA::Matrix<3, 3, float> A, BLA::Matrix<3, 1, float> b) {
   BLA::Matrix<3, 1, float> x;
-int maxRow;
-double factor;
-for(int i=0;i<3;i++){
-maxRow= i;
-for(int k=i+1;k<3;k++){
-
-   if (fabs(A(k,i)) > fabs(A(maxRow,i))) {
+  int maxRow;
+  double factor;
+  for(int i=0;i<3;i++){
+    maxRow= i;
+    for(int k=i+1;k<3;k++){
+      if (fabs(A(k,i)) > fabs(A(maxRow,i))) {
         maxRow = k;
-             }
+      }
+    }
 
+    swap(A(i), A(maxRow));
+    swap(b(i), b(maxRow));
+
+    if (fabs(A(i,i)) < 1e-10) {
+        Serial.println("Jacobian is singular, Newton's method failed.");
+    } // very unlikely with set up but can test if something goes wrong
+
+    // Forward elimination
+    for (int k = i + 1; k < 3; k++) {
+      factor = A(k,i) / A(i,i);
+      for (int j = i; j < 3; j++) {
+        A(k,j) -= factor * A(i,j);
+      }
+      b(k) -= factor * b(i);
+    }
+  }
+
+  // Back substitution
+
+  for (int i = 3 - 1; i >= 0; i--) {
+    x(i) = b(i);
+    for (int j = i + 1; j < 3; j++) {
+      x(i) -= A(i,j) * x(j);  
+    }
+    x(i) /= A(i,i);
+  }
+
+  return x;
 
 }
 
-swap(A(i), A(maxRow));
- swap(b(i), b(maxRow));
-
- //         if (fabs(A[i][i]) < 1e-10) {
-//             throw runtime_error("Jacobian is singular, Newton's method failed.");
-//         } very unlikely with set up but can test if something goes wrong
-
-// Forward elimination
-        for (int k = i + 1; k < 3; k++) {
-             factor = A(k,i) / A(i,i);
-            for (int j = i; j < 3; j++) {
-                A(k,j) -= factor * A(i,j);
-            }
-            b(k) -= factor * b(i);
-        }
-    }
-
-        // Back substitution
- 
-    for (int i = 3 - 1; i >= 0; i--) {
-        x(i) = b(i);
-        for (int j = i + 1; j < 3; j++) {
-            x(i) -= A(i,j) * x(j);
-        }
-        x(i) /= A(i,i);
-    }
-
-    return x;
-
-}
 
 
-
-
-
-
-
-// // Newton's method solver
-// Vec newtonSolve(Vec p0, double a, double b, double c, const vector<Vec>& teth_anchor, const vector<Vec>& offset) {
-//     Vec p = p0;
-
-//     for (int iter = 0; iter < MAX_ITER; iter++) {
-//         Vec F = equations(p, a, b, c, teth_anchor, offset);
-//         Mat J = jacobian(p, a, b, c, teth_anchor, offset);
-
-//         // Solve J * delta_p = -F
-//         Vec delta_p = solveLinearSystem(J, {-F[0], -F[1], -F[2]});
-
-//         // Update solution
-//         for (int i = 0; i < 3; i++) {
-//             p[i] += delta_p[i];
-//         }
-
-//         // Check for convergence
-//         double norm = sqrt(delta_p[0] * delta_p[0] + delta_p[1] * delta_p[1] + delta_p[2] * delta_p[2]);
-//         if (norm < TOL) {
-//             return p;
-//         }
-//     }
-
-//     throw runtime_error("Newton's method did not converge.");
-// }
-   
+// solving non linear system to get apex
 BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset){
-BLA::Matrix<3, 1, float> F;
-BLA::Matrix<3, 1, float> delta_p;
-BLA::Matrix<3, 3, float> J;
-double norm;
-for(int iter=0;iter<Maxiterations;iter++){
-F = equations( p,  teth_anchor, offset, tether_lengths);
-J= jacobian(p,tether_lengths,teth_anchor, offset);
-// Solve J * delta_p = -F
- delta_p = solveLinearSystem(J, -F);
+  BLA::Matrix<3, 1, float> F;
+  BLA::Matrix<3, 1, float> delta_p;
+  BLA::Matrix<3, 3, float> J;
+  double norm;
+  for(int iter=0;iter<Maxiterations;iter++){
+    F = equations( p,  teth_anchor, offset, tether_lengths);
+    // printMatrix(F);
+    J= jacobian(p,tether_lengths,teth_anchor, offset);
+    // Solve J * delta_p = -F
+    delta_p = solveSystem(J, -F);
 
-//update solution
- for (int i = 0; i < 3; i++) {
-            p(i) += delta_p(i);
-        }
+    // Serial.println("p:");
+    // printMatrix(p);
+    Serial.println("delta_p");
+    printMatrix(delta_p);
 
-        // Check for convergence
-       norm = sqrt(delta_p(0) * delta_p(0) + delta_p(1) * delta_p(1) + delta_p(2) * delta_p(2));
-        if (norm < TOL) {
-            return p;
-        }
+    //update solution
+    for (int i = 0; i < 3; i++) {
+      p(i) += delta_p(i);
+    }
+
+    // Check for convergence
+    norm = sqrt(delta_p(0) * delta_p(0) + delta_p(1) * delta_p(1) + delta_p(2) * delta_p(2));
+    if (norm < TOL) {
+        return p;
+    }
+  }
+  //  Serial.println("Estimate : " + String(p(0)) + ", " + String(p(1)) + ", " + String(p(2)) + "\n");
 
 }
 
 
-}
-
-
-
+// find tether unit vectors
 BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
-    // Define tether vectors
-    BLA::Matrix<3, 1, float> tethvec1, tethvec2, tethvec3;
-    BLA::Matrix<3, 1, float> teth1_hat, teth2_hat, teth3_hat;
+  // Define tether vectors
+  BLA::Matrix<3, 1, float> tethvec1, tethvec2, tethvec3;
+  BLA::Matrix<3, 1, float> teth1_hat, teth2_hat, teth3_hat;
 
-    // Compute tether vectors
-    for (int i = 0; i < 3; i++) {
-        tethvec1(i, 0) = teth_anchor(i, 0) - (COM(i, 0) - offset(i, 0));
-        tethvec2(i, 0) = teth_anchor(i, 1) - (COM(i, 0) - offset(i, 1));
-        tethvec3(i, 0) = teth_anchor(i, 2) - (COM(i, 0) - offset(i, 2));
-    }
+  // Compute tether vectors
+  for (int i = 0; i < 3; i++) {
+    tethvec1(i, 0) = teth_anchor(i, 0) - (COM(i, 0) - offset(i, 0));
+    tethvec2(i, 0) = teth_anchor(i, 1) - (COM(i, 0) - offset(i, 1));
+    tethvec3(i, 0) = teth_anchor(i, 2) - (COM(i, 0) - offset(i, 2));
+  }
 
-    // Normalize tether vectors to get unit vectors
-    teth1_hat = tethvec1 / sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
-    teth2_hat = tethvec2 / sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
-    teth3_hat = tethvec3 / sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
+  // Normalize tether vectors to get unit vectors
+  teth1_hat = tethvec1 / sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
+  teth2_hat = tethvec2 / sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
+  teth3_hat = tethvec3 / sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
 
-    // Define result matrix (3x4)
-    BLA::Matrix<3, 4, float> ANS;
-    for (int i = 0; i < 3; i++) {
-ANS(0,i) = teth1_hat(i);
-ANS(1,i) = teth1_hat(i);
-ANS(2,i) = teth1_hat(i);
+  // Define result matrix (3x4)
+  BLA::Matrix<3, 4, float> ANS;
+  for (int i = 0; i < 3; i++) {
+    ANS(0,i) = teth1_hat(i);
+    ANS(1,i) = teth1_hat(i);
+    ANS(2,i) = teth1_hat(i);
+  }
 
-    }
+  ANS(0, 3) = sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
+  ANS(1, 3) = sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
+  ANS(2, 3) = sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
 
-    ANS(0, 3) = sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
-    ANS(1, 3) = sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
-    ANS(2, 3) = sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
-
-    return ANS;
+  return ANS;
 }
 
-
-/*
-def calculate_tether_forces(apex, mass, teth_anchor, offset):
-    # solve the system of eqns of the unit vectors to find the equations
-    teth1_hat, teth2_hat, teth3_hat, _ = calculate_tether_vecs(apex, teth_anchor, offset)
-
-    M1 = np.array([[teth1_hat[0], teth2_hat[0], teth3_hat[0]],
-                   [teth1_hat[1], teth2_hat[1], teth3_hat[1]],
-                   [teth1_hat[2], teth2_hat[2], teth3_hat[2]]])
-    M2 = np.array([[0],[0],[mass]])
-    f = np.dot(np.linalg.inv(M1), M2)
-    return f
-
-*/
-
+// calculae tether forces given apex, anchor locations, and mass
 BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
     // Compute unit vectors
     BLA::Matrix<3, 4, float> Initial_Matrix = calculate_tether_vecs(apex, teth_anchor, offset);
@@ -409,231 +460,4 @@ BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, i
     return F;  // Return the calculated tether forces
 }
 
-//void testMatrixFunctions() {
-    //Serial.println("Running Matrix Function Tests...");
 
-  
-
-    BLA::Matrix<3, 3, float> teth_anchor = { 10.0, 11.0, 12.0,
-                                             13.0, 14.0, 15.0,
-                                             16.0, 17.0, 18.0 };
-
-    BLA::Matrix<3, 3, float> offset = { 1.0, 1.0, 1.0,
-                                        1.0, 1.0, 1.0,
-                                        1.0, 1.0, 1.0 };
-
-    int mass = 200; // Example mass value
-
-    // Call calculate_tether_vecs
-    // Serial.println("\nTesting calculate_tether_vecs...");
-    // BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
-
-    // Serial.println("Tether Vectors Result:");
-    // printMatrix(tether_vectors);
-
-    // // Call calculate_tether_forces
-    // Serial.println("\nTesting calculate_tether_forces...");
-    // BLA::Matrix<3, 1, float> tether_forces = calculate_tether_forces(COM, mass, teth_anchor, offset);
-
-    // Serial.println("Tether Forces Result:");
-    // printMatrix(tether_forces);
-
-    // Serial.println("\nMatrix Function Tests Completed.");
-
-
-// Helper function to print matrices
-template<int rows, int cols, class T>
-void printMatrix(BLA::Matrix<rows, cols, T> mat) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            Serial.print(mat(i, j), 6); // Print 6 decimal places
-            Serial.print("\t");
-        }
-        Serial.println();
-    }
-}
-
-// temporary may be used later
-#define IN_BUFFER_LEN 32
-double input[IN_BUFFER_LEN+1];
-//float temp[IN_BUFFER_LEN+1];
-double t_init = 0;
-
-void setup() {
-    // Put your setup code here, it will only run once:
-
-    Serial.begin(9600); // Start serial communication
-
-    while (!Serial) { } // Wait for serial connection
-
-    //testMatrixFunctions(); // Run matrix function tests
-
-
-    // Sets all motor connectors to the correct mode for Follow Digital
-    // Torque mode.
-    MotorMgr.MotorModeSet(MotorManager::MOTOR_ALL,
-                          Connector::CPM_MODE_A_DIRECT_B_PWM);
-
-    // Sets up serial communication and waits up to 5 seconds for a port to open
-    // Serial communication is not required for this example to run
-    Serial.begin(baudRate);
-    uint32_t timeout = 5000;
-    uint32_t startTime = millis();
-    while (!Serial && millis() - startTime < timeout) {
-        continue;
-    }
-
-    // Enables the motor
-    motor.EnableRequest(true);
-    Serial.println("Motor Enabled");
-
-    // Waits for HLFB to assert (waits for homing to complete if applicable)
-    Serial.println("Waiting for HLFB...");
-    while (motor.HlfbState() != MotorDriver::HLFB_ASSERTED) {
-        continue;
-    }
-    Serial.println("Motor Ready");
-
-
-}
-
-
-void loop() {
-
-
-// float teth1_posX = analogRead(B1); // pins will be adjusted for microcontroller
-// float teth1_posY = analogRead(B0);
-// float teth1_posZ = analogRead(B1);
-
-// float teth2_posX = analogRead(B1); // pins will be adjusted for microcontroller
-// float teth2_posY = analogRead(B1);
-// float teth2_posZ = analogRead(B1);
-
-// float teth3_posX = analogRead(B1); // pins will be adjusted for microcontroller
-// float teth3_posY = analogRead(B1);
-// float teth3_posZ = analogRead(B1);
-
- float r = 1.0;  // Example radius value
- int mass = 200;
-//  BLA::Matrix<3,1,float> apex = {1,2,3}; 
-BLA::Matrix<3, 1, float> lengths;
-BLA::Matrix<3, 1, float> p;
-p = {2,2,-4};
-BLA::Matrix<3, 1, float> apex;
-    // Compute tether attachment points
-    BLA::Matrix<3, 3, float> teth_anchor = { 
-         2.0, 0.0, 0.0 ,  
-         2.0 * cos(DEG_TO_RAD(225)), 2.0 * sin(DEG_TO_RAD(225)), 0.0 ,  
-        2.0 * cos(DEG_TO_RAD(135)), 2.0 * sin(DEG_TO_RAD(135)), 0.0  
-    };
-
-    // Compute attachment offset vectors
-    BLA::Matrix<3, 3, float> offset = { 
-         -r, 0.0, 0.0 ,  
-         -r * cos(DEG_TO_RAD(225)), -r * sin(DEG_TO_RAD(225)), 0.0 ,  
-        -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
-    };
-    // Put your main code here, it will run repeatedly:
-  int i = 0;
- // strcpy(temp, input);
-
-  while(i<3 && ioPort.CharPeek() != -1){
-   Serial.println("Enter tether length " + String(i) + "\n");
-
-      input[i] = (float) ioPort.CharGet();
-      i++;
-      // valid_input_flag
-	  Delay_ms(1);
-    }
-
-lengths(1) = input[1];
-lengths(2) = input[2];
-lengths(3) = input[3];
-
- apex =newtonSolve( p, lengths, teth_anchor, offset);
-
-Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
-
-
-
-  //BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
-
-  //BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
-
-
-    // // Output 15% of the motor's peak torque in the positive (CCW) direction.
-    // CommandTorque(15);    // See below for the detailed function definition.
-    // // Wait 2000ms.
-    // delay(2000);
-
-    // CommandTorque(-75); // Output 75% peak torque in the negative (CW) direction.
-    // delay(2000);
-
-    // CommandTorque(5); // Output 5% peak torque in the positive (CCW) direction.
-    // delay(2000);
-
-    // CommandTorque(-35); // Output 35% peak torque in the negative (CW) direction.
-    // delay(2000);
-
-    // CommandTorque(10); // Output 10% peak torque in the positive (CCW) direction.
-    // delay(2000);
-}
-
-/*------------------------------------------------------------------------------
- * CommandTorque
- *
- *    Command the motor to move using a torque of commandedTorque
- *    Prints the move status to the USB serial port
- *    Returns when HLFB asserts (indicating the motor has reached the commanded
- *    torque)
- *
- * Parameters:
- *    int commandedTorque  - The torque to command
- *
- * Returns: True/False depending on whether the torque was successfully
- * commanded.
- */
- 
-bool CommandTorque(int commandedTorque) {
-    if (abs(commandedTorque) > abs(maxTorque)) {
-        Serial.println("Move rejected, invalid torque requested");
-        return false;
-    }
-	
-    Serial.print("Commanding torque: ");
-    Serial.println(commandedTorque);
-
-    // Find the scaling factor of our torque range mapped to the PWM duty cycle
-    // range (255 is the max duty cycle).
-    double scaleFactor = 255 / maxTorque;
-
-    // Scale the torque command to our duty cycle range.
-    int dutyRequest = abs(commandedTorque) * scaleFactor;
-
-    // Set input A to match the direction of torque.
-    if (commandedTorque < 0) {
-        motor.MotorInAState(true);
-    }
-    else {
-        motor.MotorInAState(false);
-    }
-
-    // Ensures this delay is at least 20ms longer than the Input A filter
-    // setting in MSP
-    delay(20 + INPUT_A_FILTER);
-
-    // Command the move
-    motor.MotorInBDuty(dutyRequest);
-
-    // Waits for HLFB to assert (signaling the move has successfully completed)
-    Serial.println("Moving... Waiting for HLFB");
-    // Allow some time for HLFB to transition
-    delay(1);
-    while (motor.HlfbState() != MotorDriver::HLFB_ASSERTED) {
-        continue;
-    }
-
-    Serial.println("Move Done");
-    return true;
-}
-//------------------------------------------------------------------------------

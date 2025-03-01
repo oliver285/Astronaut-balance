@@ -6,7 +6,7 @@ import time
 encoder = Encoder()
 
 # Set the encoder channel (change this to match your setup)
-encoder.setChannel(1)
+encoder.setChannel(0)
 
 # Open the encoder
 encoder.openWaitForAttachment(5000)  # Wait up to 5 seconds for attachment
@@ -21,7 +21,7 @@ try:
     while True:
         # Get the current position in pulses
         position = encoder.getPosition()
-        print(position)
+        # print(position)
         # Convert counts to degrees (assuming 600 pulses per revolution)
         pulses_per_revolution = 2400  # encoder counts value
         degrees = position_to_degrees(position, pulses_per_revolution)
@@ -30,7 +30,7 @@ try:
         print(f"Position: {degrees:.2f} degrees")
         
         # Wait for a short time before reading again
-        time.sleep(0.1)
+        # time.sleep(0.1)
 
 except KeyboardInterrupt:
     print("Stopping encoder reading.")
