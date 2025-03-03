@@ -46,7 +46,10 @@
  */
 
 #include "ClearCore.h"
-#include <Keypad.h>
+#include <cstring>
+#include <cstdlib>
+#include <cmath>
+// #include <string>
 
 // The INPUT_A_FILTER must match the Input A filter setting in
 // MSP (Advanced >> Input A, B Filtering...)
@@ -64,7 +67,7 @@
 
 // Defines the limit of the torque command, as a percent of the motor's peak
 // torque rating (must match the value used in MSP).
-double maxTorque = 10;
+double maxTorque = 100;
 double currCommand = 0;
 
 // char input = '0';
@@ -72,7 +75,8 @@ double currCommand = 0;
 // temporary may be used later
 #define IN_BUFFER_LEN 32
 char input[IN_BUFFER_LEN+1];
-char temp[IN_BUFFER_LEN+1];
+int temp, input1;
+double input2;
 double t_init = 0;
 
 // flag to tell input 3 to normalize millis()
@@ -88,12 +92,8 @@ void setup() {
     // Put your setup code here, it will only run once:
 
     // set digital and analog pins as inputs //
-    ioPort.Mode(Connector::USB_CDC);  
-    ioPort.Speed(ioPortBaudRate);
-    ioPort.PortOpen();
-    while (!ioPort) {
-      continue;
-    }
+
+
     // Sets all motor connectors to the correct mode for Follow Digital
     // Torque mode.
     MotorMgr.MotorModeSet(MotorManager::MOTOR_ALL,
@@ -130,24 +130,47 @@ void loop() {
     // analog adc convert (load cell) //
     // digital (encoder input) //
     int i = 0;
-    strcpy(temp, input);
+    char rc;
+    char endMarker = '\n';
+    temp = input1;
     // read the serial port input
-    while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
-      input[i] = (char) ioPort.CharGet();
-      i++;
-      // valid_input_flag
-	  Delay_ms(1);
+    // while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
+    //   input[i] = (char) ioPort.CharGet();
+    //   i++;
+    //   // valid_input_flag
+    // }
+    while (Serial.available() > 0) {
+      rc = Serial.read();
+      if (rc != endMarker) {
+        input[i] = rc;
+        i++;
+      }
+      else{
+        input[i] = '\0'; // terminate the string
+        i = 0;
+      }
+    }
+    
+    // Serial.println(input);
+
+    char input_temp[IN_BUFFER_LEN+1];
+    strcpy(input_temp, input);
+
+    char *token = strtok(input_temp, ",");
+    if (token != nullptr) {
+        input1 = strtol(token, nullptr, 10); // Convert first value to in
+        token = strtok(nullptr, ",");
+        if (token != nullptr) {
+            input2 = strtod(token, nullptr); // Convert second value to double
+        }
     }
 
-    // Serial.print("-----------\n");
-    // Serial.println(input[0]);
-    // Serial.println(temp[0]);
-    // Serial.println(i);
-    // Serial.print("----------\n");
+    // Serial.println(input1);
+    // Serial.println(input2);
 
 
-    switch(input[0]){
-      case '1':
+    switch(input1){
+      case 1:
         {
         torque_input_needed = false;
         // Serial.print("input 1 \n");
@@ -159,7 +182,7 @@ void loop() {
         break;
         }
 
-      case '2':
+      case 2:
         {
         char force_input[IN_BUFFER_LEN+1];
         double force_input_double;
@@ -168,34 +191,39 @@ void loop() {
         if(!torque_input_needed){
           test_start = false;
           torque_input_needed = true;
-          while(!valid_input){
-            // wait for force input
-            force_input_double = 0;
-            torque_input = 0;
-            memset(force_input, 0, sizeof(force_input));
-            i = 0;
-            Serial.print("input desired force \n");
-            while(ioPort.CharPeek() == -1){
-              continue;
-            }
-            while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
-              force_input[i] = (char) ioPort.CharGet();
-              i++;
-              // valid_input_flag
-              Delay_ms(1);  
-            }
-            // convert input to double
-            force_input_double = atof(force_input);
-            // placeholder for force to torque conversion
-            torque_input = force_input_double;
-            if (torque_input > maxTorque){
-              Serial.println("torque input:" + String(torque_input) + ", is greater than max torque:" + String(maxTorque) + "\n");
-            }
-            else{
-              valid_input = true;
-              currCommand = torque_input;
-            }
-          }
+          // TODO: input of 1 does not return to state 1
+
+
+          // while(!valid_input){
+          //   // wait for force input
+          //   force_input_double = 0;
+          //   torque_input = 0;
+          //   memset(force_input, 0, sizeof(force_input));
+          //   i = 0;
+          //   Serial.print("input desired force \n");
+          //   while(ioPort.CharPeek() == -1){
+          //     continue;
+          //   }
+          //   while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
+          //     force_input[i] = (char) ioPort.CharGet();
+          //     i++;
+          //     // valid_input_flag
+          //     Delay_ms(1);  
+          //   }
+          //   // convert input to double
+          //   force_input_double = atof(force_input);
+          //   // placeholder for force to torque conversion
+          //   torque_input = force_input_double;
+          //   if (torque_input > maxTorque){
+          //     Serial.println("torque input:" + String(torque_input) + ", is greater than max torque:" + String(maxTorque) + "\n");
+          //   }
+          //   else{
+          //     valid_input = true;
+          //     currCommand = torque_input;
+          //   }
+          // }
+
+
         }
         // Serial.print("input 2 \n");
         // Serial.println(motor.EnableRequest());
@@ -204,18 +232,18 @@ void loop() {
           Serial.print("motor enabled \n");
         }
 
-
+        currCommand = maxTorque - abs(10*(fmod(input2,360.0))/360.0);
         CommandTorque(currCommand);    // See below for the detailed function definition.
         // Wait 2000ms.
 
         break;
         }
 
-      case '3':
+      case 3:
         {
-        if (temp[0] == '1'){
+        if (temp == 1){
           Serial.print("Invalid jump \n");
-          strcpy(input, temp);
+          input1 = temp;
           break;
         }
 
@@ -223,14 +251,15 @@ void loop() {
           t_init = millis();
           test_start = true;
         }
-        Serial.println(currCommand);
+
+        currCommand = maxTorque - abs(10*(fmod(input2,360.0))/360.0);
         CommandTorque(currCommand);    // See below for the detailed function definition.
         // Wait 2000ms.
-        double hlfbP = motor.HlfbPercent();
-        Serial.println(hlfbP);
-        Serial.println(String(millis() - t_init, 4) + ", 1, " + String(motor.HlfbPercent()) + ", meas1, meas2, meas3");
+        // double hlfbP = motor.HlfbPercent();
+        // Serial.println(hlfbP);
+        Serial.println(String(millis() - t_init, 4) + ", " +String(currCommand) + ", " + String(input2));
         delay(200);
-        // time, meas1, meas2, meas3
+
         break;
         }
 
@@ -239,7 +268,7 @@ void loop() {
         break;
     }
 
-    delay(500);
+    delay(200);
     // // Output 15% of the motor's peak torque in the positive (CCW) direction.
     // CommandTorque(5);    // See below for the detailed function definition.
     // // Wait 2000ms.
@@ -306,8 +335,7 @@ bool CommandTorque(int commandedTorque) {
       Serial.println("Motor Fault or Overspeed Timeout Detected!");
       delay(5000);
       motor.EnableRequest(false); // Disable motor
-      delay(500);
-      motor.EnableRequest(true);  // Re-enable motor
+      input1 = 1; // return tp state 1
     }
 
     while(motor.HlfbState() != MotorDriver::HLFB_ASSERTED){

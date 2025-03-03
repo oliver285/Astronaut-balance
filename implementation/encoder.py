@@ -4,10 +4,8 @@ import time
 
 # Define the encoder object
 encoder = Encoder()
-
 # Set the encoder channel (change this to match your setup)
 encoder.setChannel(0)
-
 # Open the encoder
 encoder.openWaitForAttachment(5000)  # Wait up to 5 seconds for attachment
 
