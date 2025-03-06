@@ -85,18 +85,19 @@ void loop() {
 
     // Read the analog input (A-9 through A-12 may be configured as analog
     // inputs).
+    // TODO: not reading correctly when ground hooked into A12, only A12-A11
     int adcResult1 = analogRead(A12);
     int adcResult2 = analogRead(A11);
     int adcResult = adcResult1 - adcResult2;
     // Convert the reading to a voltage.
     double inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
 
-    // Alternatively, you can use the following to get a measurement in
-    // volts:
-    // double inputVoltage = analogRead(A12, MILLIVOLTS) / 1000.0;
-    double load_cell_force = (inputVoltage/10)*LOAD_CELL_MAX_FORCE;
+    
+    // TODO: offset and scale factor
+    double load_cell_force = (inputVoltage/3)*LOAD_CELL_MAX_FORCE;
     // Display the voltage reading to the USB serial port.
-    Serial.print(load_cell_force);
+    // Serial.print(load_cell_force);
+    Serial.print(inputVoltage);
         Serial.print("\n");
 
 
