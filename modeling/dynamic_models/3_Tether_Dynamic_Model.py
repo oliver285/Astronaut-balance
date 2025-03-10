@@ -119,7 +119,7 @@ def simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis='x'):
     
     return positions, np.column_stack((x_tilt, y_tilt))
 
-def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, apex_error, torques, tilt_axis, tether1vec, tether2vec, tether3vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec, max_hip_tilt):
+def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, apex_error, torques, tilt_axis, tether1vec, tether2vec, tether3vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec, max_hip_tilt, length_vec):
     # Set figure size and style for all plots
     plt.style.use('default')
     figsize = (8, 4)
@@ -174,6 +174,20 @@ def plot_simulation_results(time_vec, positions, angles, f_errors, ang_errors, a
     ax3.set_ylim([-5, 5])
     plt.tight_layout()
     fig3.savefig(f'plots_report/3_tether_position_{tilt_axis}_mass_{p.mass}.png')
+
+    # length components plot
+    fig20 = plt.figure(figsize=figsize)
+    ax20 = fig20.add_subplot(111)
+    ax20.plot(time_vec, length_vec[:, 0], label='1')
+    ax20.plot(time_vec, length_vec[:, 1], label='2')
+    ax20.plot(time_vec, length_vec[:, 2], label='3')
+    ax20.set_xlabel('Time (s)')
+    ax20.set_ylabel('length (ft)')
+    ax20.set_title(f'Tether lengths over time, Tilt Axis: {tilt_axis}')
+    ax20.grid(True)
+    ax20.legend()
+    # ax15.set_ylim([-5, 5])
+    plt.tight_layout()
     
     # Force error plot
     fig4 = plt.figure(figsize=figsize)
@@ -380,6 +394,7 @@ def main():
     tether1_vec = np.zeros((time_steps, 3))
     tether2_vec = np.zeros((time_steps, 3))
     tether3_vec = np.zeros((time_steps, 3))
+    length_vec = np.zeros((time_steps, 3))
     err_teth_one_vec = np.zeros(time_steps)
     err_teth_two_vec = np.zeros(time_steps)
     err_teth_three_vec = np.zeros(time_steps)
@@ -410,6 +425,7 @@ def main():
         teth1_len_rotated[i], teth2_len_rotated[i], teth3_len_rotated[i], teth1_cord_rotated[i], teth2_cord_rotated[i], teth3_cord_rotated[i] = calculate_tether_lengths_rotated(tilt_angle_rad[i], COM, tether1_horz_coord[i], tether2_horz_coord, tether3_horz_coord, tilt_axis)
         # Calculate tether properties
         _, _, _, teth_lengths, teth1_rotated[i], teth2_rotated[i], _= calculate_tether_vecs(COM, teth_anchor, offset)
+        length_vec[i] = teth_lengths
 
         # tether error due to tilt
         teth1_err = teth1_len_rotated[i] - teth_lengths[0]
@@ -462,7 +478,7 @@ def main():
 
     # Plot results
     plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, apex_error, torques, tilt_axis,
-                            tether1_vec, tether2_vec, tether3_vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec, max_hip_tilt)
+                            tether1_vec, tether2_vec, tether3_vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec, max_hip_tilt, length_vec)
     
     plt.show()
    

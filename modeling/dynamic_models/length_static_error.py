@@ -7,8 +7,7 @@ import itertools
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from mpl_toolkits.mplot3d import Axes3D
-import Dynamic_model_3teth_revC
+from modeling.dynamic_models.model_archive import Dynamic_model_3teth_revC
 from tqdm import tqdm
 matplotlib.rcParams['animation.ffmpeg_path'] = r'C:\Users\Peter\OneDrive\Desktop\ffmpeg\ffmpeg-2024-11-18-git-970d57988d-full_build\bin\ffmpeg.exe'
 

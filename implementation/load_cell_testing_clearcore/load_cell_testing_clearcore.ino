@@ -97,9 +97,13 @@ void loop() {
     double load_cell_force = (inputVoltage/3)*LOAD_CELL_MAX_FORCE;
     // Display the voltage reading to the USB serial port.
     // Serial.print(load_cell_force);
-    Serial.print(inputVoltage);
-        Serial.print("\n");
+    // Serial.print(inputVoltage);
+    // Serial.print("\n");
 
+    Serial.print(adcResult1);
+    Serial.print("\n");
+    Serial.print(adcResult2);
+    Serial.print("\n\n");
 
     // Wait a second before the next reading.
     delay(200);
