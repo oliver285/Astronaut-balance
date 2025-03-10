@@ -109,6 +109,8 @@ double t_init = 0;
 // helper function to print matrices
 template<int rows, int cols, typename T>
 void printMatrix(const BLA::Matrix<rows, cols, T>& mat) {
+
+
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
             Serial.print(mat(i, j), 6); // Print 6 decimal places
@@ -305,27 +307,60 @@ BLA::Matrix<3, 1, float> equations(BLA::Matrix<3,1, float> p, BLA::Matrix<3, 3, 
 
 
 
-// Function to compute the Jacobian matrix using finite differences
-BLA::Matrix<3, 3, float> jacobian(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset){
+// // Function to compute the Jacobian matrix using finite differences
+// BLA::Matrix<3, 3, float> jacobian(BLA::Matrix<3,1, float> p, 
+//                                   BLA::Matrix<3,1, float> tether_lengths, 
+//                                   BLA::Matrix<3, 3, float> teth_anchor, 
+//                                   BLA::Matrix<3, 3, float> offset) {
+//     BLA::Matrix<3, 3, float> J;
+//     double h = 1e-5;
+//     BLA::Matrix<3,1, float> p1, f1, f2;
 
-  BLA::Matrix<3, 3, float> J;
-  double h = 1e-5;
-  BLA::Matrix<3,1, float> p1;
-  BLA::Matrix<3,1, float> p2;
-  BLA::Matrix<3,1, float> f1;
-  BLA::Matrix<3,1, float> f2;
-  for(int i=0;i<3;i++){
-    p1(i)= p(i)+h;
-    p2(i)=p(i)-h;
-    f1 = equations(p1,teth_anchor, offset,tether_lengths);
-    f2 = equations(p2,teth_anchor, offset,tether_lengths);
+//     for (int i = 0; i < 3; i++) {
+//         p1 = p;
+//         p1(i) += h;
+//         f1 = equations(p1, teth_anchor, offset, tether_lengths);
+        
+//         p1(i) -= 2*h;
+//         f2 = equations(p1, teth_anchor, offset, tether_lengths);
 
-    for (int j = 0; j < 3; j++) {
-      J(j,i) = (f1(j)-f2(j))/(2*h); 
+//         for (int j = 0; j < 3; j++) {
+//             J(j, i) = (f1(j) - f2(j)) / (2 * h);
+//         }
+//     }
+//     return J;
+// }
+
+
+BLA::Matrix<3, 3, float> jacobian(BLA::Matrix<3, 1, float> p, 
+                                  BLA::Matrix<3, 1, float> tether_lengths, 
+                                  BLA::Matrix<3, 3, float> teth_anchor, 
+                                  BLA::Matrix<3, 3, float> offset) {
+    BLA::Matrix<3, 3, float> J;
+
+    // Initialize the Identity matrix
+    BLA::Matrix<3, 3, float> Identity;
+    Identity(0, 0) = 1.0f; Identity(0, 1) = 0.0f; Identity(0, 2) = 0.0f;
+    Identity(1, 0) = 0.0f; Identity(1, 1) = 1.0f; Identity(1, 2) = 0.0f;
+    Identity(2, 0) = 0.0f; Identity(2, 1) = 0.0f; Identity(2, 2) = 1.0f;
+
+    // Populate the Jacobian matrix
+    for (int i = 0; i < 3; i++) {
+        J(i, 0) = 2 * (p(0) - (teth_anchor(i, 0) + offset(i, 0)));
+        J(i, 1) = 2 * (p(1) - (teth_anchor(i, 1) + offset(i, 1)));
+        J(i, 2) = 2 * (p(2) - (teth_anchor(i, 2) + offset(i, 2)));
     }
-  }
-  return J;
+
+    // Check if the Jacobian is nearly singular and apply regularization
+    if (abs(Determinant(J)) < 1e-6) { 
+        Serial.println("Jacobian nearly singular! Adding regularization.");
+        J = J + (1e-6f * Identity);  // Cast 1e-6 to float for consistency
+    }
+
+    return J;
 }
+
+
 
 // swap rows
 void swap(float& a, float& b) {
@@ -334,83 +369,112 @@ void swap(float& a, float& b) {
     b = temp;
 }
 
-// solve system by doing things
+// // solve system by doing things
+// BLA::Matrix<3, 1, float> solveSystem(BLA::Matrix<3, 3, float> A, BLA::Matrix<3, 1, float> b) {
+//   BLA::Matrix<3, 1, float> x;
+//   int maxRow;
+//   double factor;
+//   for(int i=0;i<3;i++){
+//     maxRow= i;
+//     for(int k=i+1;k<3;k++){
+//       if (fabs(A(k,i)) > fabs(A(maxRow,i))) {
+//         maxRow = k;
+//       }
+//     }
+
+//     swap(A(i), A(maxRow));
+//     swap(b(i), b(maxRow));
+
+//     if (fabs(A(i,i)) < 1e-10) {
+//         Serial.println("Jacobian is singular, Newton's method failed.");
+//     } // very unlikely with set up but can test if something goes wrong
+
+//     // Forward elimination
+//     for (int k = i + 1; k < 3; k++) {
+//       factor = A(k,i) / A(i,i);
+//       for (int j = i; j < 3; j++) {
+//         A(k,j) -= factor * A(i,j);
+//       }
+//       b(k) -= factor * b(i);
+//     }
+//   }
+
+//   // Back substitution
+
+//   for (int i = 3 - 1; i >= 0; i--) {
+//     x(i) = b(i);
+//     for (int j = i + 1; j < 3; j++) {
+//       x(i) -= A(i,j) * x(j);  
+//     }
+//     x(i) /= A(i,i);
+//   }
+
+//   return x;
+
+// }
+
 BLA::Matrix<3, 1, float> solveSystem(BLA::Matrix<3, 3, float> A, BLA::Matrix<3, 1, float> b) {
-  BLA::Matrix<3, 1, float> x;
-  int maxRow;
-  double factor;
-  for(int i=0;i<3;i++){
-    maxRow= i;
-    for(int k=i+1;k<3;k++){
-      if (fabs(A(k,i)) > fabs(A(maxRow,i))) {
-        maxRow = k;
-      }
-    }
-
-    swap(A(i), A(maxRow));
-    swap(b(i), b(maxRow));
-
-    if (fabs(A(i,i)) < 1e-10) {
-        Serial.println("Jacobian is singular, Newton's method failed.");
-    } // very unlikely with set up but can test if something goes wrong
-
-    // Forward elimination
-    for (int k = i + 1; k < 3; k++) {
-      factor = A(k,i) / A(i,i);
-      for (int j = i; j < 3; j++) {
-        A(k,j) -= factor * A(i,j);
-      }
-      b(k) -= factor * b(i);
-    }
-  }
-
-  // Back substitution
-
-  for (int i = 3 - 1; i >= 0; i--) {
-    x(i) = b(i);
-    for (int j = i + 1; j < 3; j++) {
-      x(i) -= A(i,j) * x(j);  
-    }
-    x(i) /= A(i,i);
-  }
-
-  return x;
-
+    return Inverse(A) * b;  // Directly use matrix division in BLA
 }
 
 
 
-// solving non linear system to get apex
-BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset){
-  BLA::Matrix<3, 1, float> F;
-  BLA::Matrix<3, 1, float> delta_p;
-  BLA::Matrix<3, 3, float> J;
-  double norm;
-  for(int iter=0;iter<Maxiterations;iter++){
-    F = equations( p,  teth_anchor, offset, tether_lengths);
-    // printMatrix(F);
-    J= jacobian(p,tether_lengths,teth_anchor, offset);
-    // Solve J * delta_p = -F
-    delta_p = solveSystem(J, -F);
+// Solving nonlinear system to get apex using Newton-Raphson method
+BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3, 1, float> p, 
+                                     BLA::Matrix<3, 1, float> tether_lengths, 
+                                     BLA::Matrix<3, 3, float> teth_anchor, 
+                                     BLA::Matrix<3, 3, float> offset) {
+    BLA::Matrix<3, 1, float> F, delta_p;
+    BLA::Matrix<3, 3, float> J;
+    double norm;
 
-    // Serial.println("p:");
-    // printMatrix(p);
-    Serial.println("delta_p");
-    printMatrix(delta_p);
+    for (int iter = 0; iter < Maxiterations; iter++) {
+        // Compute function values
+        F = equations(p, teth_anchor, offset, tether_lengths);
+        
+        Serial.print("Iteration: "); Serial.println(iter);
+        Serial.println("Current p:");
+        printMatrix(p);
 
-    //update solution
-    for (int i = 0; i < 3; i++) {
-      p(i) += delta_p(i);
+        Serial.println("F(p):");
+        printMatrix(F);
+
+        // Compute Jacobian
+        J = jacobian(p, tether_lengths, teth_anchor, offset);
+        
+        Serial.println("Jacobian:");
+        printMatrix(J);
+
+        // Check if the Jacobian is nearly singular
+        float det_J = Determinant(J);
+        Serial.print("Determinant of Jacobian: ");
+        Serial.println(det_J);
+
+        if (abs(det_J) < 1e-6) { 
+            Serial.println("Jacobian is nearly singular! Stopping.");
+            return {0, 0, 0};
+        }
+
+        // Solve J * delta_p = -F
+        delta_p = solveSystem(J, -F);
+
+        Serial.println("delta_p:");
+        printMatrix(delta_p);
+
+        // Update solution
+        for (int i = 0; i < 3; i++) {
+            p(i) = p(i) + delta_p(i);
+        }
+
+        // Check for convergence
+        norm = sqrt(delta_p(0) * delta_p(0) + delta_p(1) * delta_p(1) + delta_p(2) * delta_p(2));
+        if (norm < TOL) {
+            return p;
+        }
     }
 
-    // Check for convergence
-    norm = sqrt(delta_p(0) * delta_p(0) + delta_p(1) * delta_p(1) + delta_p(2) * delta_p(2));
-    if (norm < TOL) {
-        return p;
-    }
-  }
-  //  Serial.println("Estimate : " + String(p(0)) + ", " + String(p(1)) + ", " + String(p(2)) + "\n");
-
+    Serial.println("Maximum iterations reached. Returning last estimate.");
+    return p;
 }
 
 
