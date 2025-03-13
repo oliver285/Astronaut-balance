@@ -1,18 +1,14 @@
-// TODO: this crashes (check back later)
+// TODO: when hitting errors and returning tp base state, the chracter array input[0] has to be changed or else the jump will not be acknowledged,
+//  potentially change this to allow the int input1 to be changed and not be overwritten by input array (or not, might be for the better)
 
-
-
-
-
-
+// TODO: motor 1 inverted (marked with x physucally)
+// TODO: input a state should not be necessary to check, since we are torquing in one direction will only need one direction and not allow torque commands in the other direction.
 
 
 /*
  * Objective:
- *    Develop the data pipeline for each motor in the system
- *
- * Description:
- *    This file runs a proof of concept for the pipeline for one motor. It takes in 
+ *    Develop the data pipeline for each motor in the system, the force determination of the system for this script will be done on the computer
+ *    through python. inputs 2,3,4 will be force commands that get converted to torques on this script
  *
  * Requirements:
  * 1. A ClearPath motor must be connected to Connector M-0.
@@ -43,7 +39,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
-// weird shit going on with class between preprocessor min/max macros and std min/max
+// weird shit going on with class between preprocessor min/max macros and std min/max (undefine both of them)
 #ifdef min
 #undef min
 #endif
@@ -53,57 +49,53 @@
 #include <vector>
 #include <string>
 
-
-using namespace std;
-
 // The INPUT_A_FILTER must match the Input A filter setting in
 // MSP (Advanced >> Input A, B Filtering...)
 #define INPUT_A_FILTER 20
 
-// Defines the motor's connector as ConnectorM0
+// Defines the motor connectors
 #define ioPort ConnectorUsb
-#define motor ConnectorM0
+#define motor1 ConnectorM0
+#define motor2 ConnectorM1
+#define motor3 ConnectorM2
 
-// Select the baud rate to match the target device.
+// Select the baud rate and io port baud rate to match the target device.
 #define baudRate 115200
 #define ioPortBaudRate  115200
-// adc resolution
-#define adcResolution 12
 
-// define max load cell force and scale factor for V to lb conversion
-#define LOAD_CELL_MAX_FORCE 220.462
-#define scale_factor 1.1316
-
-// define digital pin inputs being used //
+// define number of motors being used
+int num_motors = 2;
 
 // Defines the limit of the torque command, as a percent of the motor's peak
 // torque rating (must match the value used in MSP).
 double maxTorque = 100;
-double currCommand = 0;
 
-// char input = '0';
-// setup paramater indicating how many motors are being used
-int num_motors = 1;
-
-// temporary may be used later
+// define serial buffer length and character input and float_input arrays
 #define IN_BUFFER_LEN 32
-std::vector<float> input(4);
-int temp, input1 = 0; // temp to remember previous state and state input
+char input[IN_BUFFER_LEN+1];
+std::vector<float> float_inputs(4);
+
+// temp ensures we don't jump from state 1 to state 3, input1 is the state command
+int prev_input1, input1 = 0;
 double input2, input3, input4; // torque/force command
+
+// defines start of test (entering state3)
 double t_init = 0;
 
 // flag to tell input 3 to normalize millis()
 bool test_start = false;
-// flag to tell input 2 whether to ask for input torque
-bool torque_input_needed = true;
 
-// Declares our user-defined helper function, which is used to command torque.
-// The definition/implementation of this function is at the bottom of the sketch.
-std::vector<float> get_inputs();
+// Declares helper functions
+void getNumMotors();
+void multipleMotorEnable(bool request);
+void checkMotorAState(const std::vector<float>& commandedTorque);
 bool CommandTorque(int commandedTorque);
+
 
 void setup() {
     // Put your setup code here, it will only run once:
+    // set digital and analog pins as inputs //
+    
 
     // Sets all motor connectors to the correct mode for Follow Digital
     // Torque mode.
@@ -111,7 +103,6 @@ void setup() {
                           Connector::CPM_MODE_A_DIRECT_B_PWM);
 
     // Sets up serial communication and waits up to 5 seconds for a port to open
-    // Serial communication is not required for this example to run
     Serial.begin(baudRate);
     uint32_t timeout = 5000;
     uint32_t startTime = millis();
@@ -119,250 +110,313 @@ void setup() {
         continue;
     }
 
-    // Set the resolution of the ADC.
-    analogReadResolution(adcResolution);
+    // ask for number of motors
+    getNumMotors();
 
-    // initializes the motor
-    motor.EnableRequest(false);
-    Serial.println("Motor Ready");
+    // set input1 to state 1
+    input[0] = '1';
+
+    // set up motors to start loop disabled
+    multipleMotorEnable(false);
+    Serial.println(String(num_motors) + " Motor(s) Ready");
 }
 
 
 void loop() {
     // Put your main code here, it will run repeatedly:
-
-    // analog and digital read //
-    // analog adc convert (load cell) //
-    // digital (encoder input) //
-    temp = input1;
-
-    // get serial input
-    input = get_inputs();
-    input1 = input[0];
-    input2 = input[1];
   
+    // read serial port
+    int i = 0;
+    char rc;
+    char endMarker = '\n';
+    prev_input1 = input1;
+    // serial port messages in are currently of the form: state_input, input1, input2, input3
+    while (Serial.available() > 0) {
+      rc = Serial.read();
+      if (rc != endMarker) {
+        input[i] = rc;
+        i++;
+      }
+      else{
+        input[i] = '\0'; // terminate the string
+        i = 0;
+      }
+    }
 
+    // inputs converted to floats
+    i = 0;
+    char input_temp[IN_BUFFER_LEN+1];
+    strcpy(input_temp, input);
 
+    char *token = strtok(input_temp, ",");
+    while(token != nullptr){
+      if(i > 4){
+        Serial.println("to many serial inputs");
+        // if command greater than 4 inputs, send idle state with zero forces
+        float_inputs = {1,0,0,0};
+        break;
+        }
+        float_inputs[i] = atof(token);
+        token = strtok(nullptr, ",");
+        i++;
+    }
 
-
-
-    // Serial.println(input1);
-    // Serial.println(input2);
+    input1 = float_inputs[0];
+    input2 = float_inputs[1];
+    input3 = float_inputs[2];
+    input4 = float_inputs[3];
 
 
     switch(input1){
       case 1:
         {
-        torque_input_needed = false;
-        // Serial.print("input 1 \n");
-        if(motor.EnableRequest()){
-          motor.EnableRequest(false);
-          Serial.print("motor disabled \n");
-        }
-        // motor.EnableRequest(false); // Disable motor
-        break;
+          test_start = false;
+          // Serial.print("state 1 \n");
+
+          // disable motors
+          if(motor1.EnableRequest()){
+            multipleMotorEnable(false);
+            Serial.print("motor(s) disabled \n");
+          }
+          break;
         }
 
       case 2:
         {
-        char force_input[IN_BUFFER_LEN+1];
-        double force_input_double;
-        double torque_input;
-        bool valid_input = false;
-        if(!torque_input_needed){
           test_start = false;
-          torque_input_needed = true;
-          // TODO: input of 1 does not return to state 1
+          // Serial.print("state 2 \n");
+          
+          // enable motors but dont print data to serial port
+          if(!motor1.EnableRequest()){
+            multipleMotorEnable(true);
+            Serial.print("motor(s) enabled \n");
+          }
 
-          // // temporary loop to capture custom user torque input.
-          // while(!valid_input){
-          //   // wait for force input
-          //   force_input_double = 0;
-          //   torque_input = 0;
-          //   memset(force_input, 0, sizeof(force_input));
-          //   i = 0;
-          //   Serial.print("input desired force \n");
-          //   while(ioPort.CharPeek() == -1){
-          //     continue;
-          //   }
-          //   while(i<IN_BUFFER_LEN && ioPort.CharPeek() != -1){
-          //     force_input[i] = (char) ioPort.CharGet();
-          //     i++;
-          //     // valid_input_flag
-          //     Delay_ms(1);  
-          //   }
-          //   // convert input to double
-          //   force_input_double = atof(force_input);
-          //   // placeholder for force to torque conversion
-          //   torque_input = force_input_double;
-          //   if (torque_input > maxTorque){
-          //     Serial.println("torque input:" + String(torque_input) + ", is greater than max torque:" + String(maxTorque) + "\n");
-          //   }
-          //   else{
-          //     valid_input = true;
-          //     currCommand = torque_input;
-          //   }
-          // }
+          // TODO: currently inverted
+          // TODO: need force to torque conversion here
+          std::vector<float> currCommand(3);
+          currCommand = {maxTorque - input2, input3, maxTorque - input4};;
+          CommandTorque(currCommand);    // See below for the detailed function definition.
+          // Wait 2000ms.
 
-
-        }
-        // Serial.print("input 2 \n");
-        // Serial.println(motor.EnableRequest());
-        if(!motor.EnableRequest()){
-          motor.EnableRequest(true);
-          Serial.print("motor enabled \n");
-        }
-
-        currCommand = maxTorque - abs(10*(fmod(input2,360.0))/360.0);
-        CommandTorque(currCommand);    // See below for the detailed function definition.
-        // Wait 2000ms.
-
-        break;
+          break;
         }
 
       case 3:
         {
-        if (temp == 1){
-          Serial.print("Invalid jump \n");
-          input1 = temp;
+          // cannot jump directly to state 3 from 1
+          if (prev_input1 == 1){
+            Serial.print("Invalid jump \n");
+            input[0] = '1';
+            break;
+          }
+
+          // start millis at zero
+          if(!test_start){
+            t_init = millis();
+            test_start = true;
+          }
+
+          // TODO: currently inverted
+          // TODO: need force to torque conversion here
+          std::vector<float> currCommand(3);
+          currCommand = {maxTorque - input2, input3, maxTorque - input4};
+          CommandTorque(currCommand);    // See below for the detailed function definition.
+          // currently prints inputs, will prints load cell force outputs
+          Serial.println(String(millis() - t_init, 4) + ", " + String(input2) + ", " + String(input3) + ", " + String(input4));
+          delay(200);
+
           break;
         }
 
-        if(!test_start){
-          t_init = millis();
-          test_start = true;
-        }
-
-        currCommand = maxTorque - abs(10*(fmod(input2,360.0))/360.0);
-        CommandTorque(currCommand);    // See below for the detailed function definition.
-        // Wait 2000ms.
-        // double hlfbP = motor.HlfbPercent();
-        // Serial.println(hlfbP);
-        Serial.println(String(millis() - t_init, 4) + ", " +String(currCommand) + ", " + String(input2));
-        delay(200);
-
-        break;
-        }
-
       default:
+        // currently sets state back to one if an invalid input is received
         Serial.print("Invalid input \n");
+        input[0] = '1';
         break;
     }
 
+    // TODO: temporary delay
     delay(200);
-    // // Output 15% of the motor's peak torque in the positive (CCW) direction.
-    // CommandTorque(5);    // See below for the detailed function definition.
-    // // Wait 2000ms.
-    // delay(2000);
-
-    // CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
-    // delay(2000);
-
-
-    
 }
 
-
-std::vector<float> get_inputs(){
+void getNumMotors(){
+  // continue receiving inputs until valid motor number is entered
+  bool valid_input = false;
   int i = 0;
-  char rc; // current read character
-  char endMarker = '\n';
-  char str_input[IN_BUFFER_LEN+1];
-  // serial port messages in are currently of the form: state input, encoder angle
-  while (Serial.available() > 0) {
-    rc = Serial.read();
-    if (rc != endMarker) {
-      str_input[i] = rc;
+  char rc; // received character
+  char rint; // received int
+  char motor_num_in[IN_BUFFER_LEN+1];
+  while(!valid_input){
+    Serial.print("input number of motors\n");
+    // expect single character to be received
+    while(Serial.available() == 0){
+      continue;
+    }
+    while (Serial.available() > 0) {
+      rc = Serial.read();
+      motor_num_in[i] = rc;
       i++;
     }
+    
+    // convert char to int and check if it's within bounds
+    rint = atoi(motor_num_in);
+    if(rint < 1 || rint > 3){
+      Serial.print("input should be 1, 2, or 3\n");
+    }
     else{
-      str_input[i] = '\0'; // terminate the string
-      i = 0;
+      num_motors = rint;
+      valid_input = true;
     }
   }
+  return;
+}
 
-  // Serial.println(input);
-  i = 0;
-  // inputs converted to floats
-  std::vector<float> float_inputs(4);
-
-  char *token = strtok(str_input, ",");
-  while(token != nullptr){
-    if(i > 4){
-      Serial.println("to many serial inputs");
-      // if command greater than 4 inputs, send idle state with zero forces
-      float_inputs = {1,0,0,0};
+// enable or disable 1-3 motors depending on what num_motors is
+void multipleMotorEnable(bool request){
+  switch (num_motors){
+    case 1:
+      motor1.EnableRequest(request);
       break;
-      }
-      float_inputs[i] = atof(token);
-      token = strtok(nullptr, ",");
+    case 2:
+      motor1.EnableRequest(request);
+      motor2.EnableRequest(request);
+      break;
+    case 3:
+      motor1.EnableRequest(request);
+      motor2.EnableRequest(request);
+      motor3.EnableRequest(request);
+      break;
+    default:
+      Serial.print("incompatible number of motors\n");
+      break;
   }
+}
 
+// toggle direction (A state) depending on num motors
+void checkMotorAState(const std::vector<float>& commandedTorque){
+  switch (num_motors){
+    case 1:
+      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      else {motor1.MotorInAState(false);}
+      break;
+    case 2:
+      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      else {motor1.MotorInAState(false);}
+
+      if (commandedTorque[1] < 0) {motor2.MotorInAState(true);}
+      else {motor2.MotorInAState(false);}
+      break;
+    case 3:
+      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      else {motor1.MotorInAState(false);}
+
+      if (commandedTorque[1] < 0) {motor2.MotorInAState(true);}
+      else {motor2.MotorInAState(false);}
+
+      if (commandedTorque[2] < 0) {motor3.MotorInAState(true);}
+      else {motor3.MotorInAState(false);}
+      break;
+    default:
+      Serial.print("incompatible number of motors\n");
+      break;
+  }
 }
 
 /*------------------------------------------------------------------------------
- * CommandTorque
- *
- *    Command the motor to move using a torque of commandedTorque
- *    Prints the move status to the USB serial port
- *    Returns when HLFB asserts (indicating the motor has reached the commanded
- *    torque)
- *
- * Parameters:
- *    int commandedTorque  - The torque to command
- *
- * Returns: True/False depending on whether the torque was successfully
- * commanded.
+ * CommandTorque commands set of up to three motors given vector of torque commands
  */
-bool CommandTorque(int commandedTorque) {
-    if (abs(commandedTorque) > abs(maxTorque)) {
-        Serial.println("Move rejected, invalid torque requested");
-        return false;
+bool CommandTorque(const std::vector<float>& commandedTorque) {
+    for (int i = 0; i < (commandedTorque.size()-1); i++){
+      if (abs(commandedTorque[i]) > abs(maxTorque)) {
+          Serial.println("Move rejected, invalid torque requested");
+          return false;
+      }
     }
-	
-    // Serial.print("Commanding torque: ");
-    // Serial.println(commandedTorque);
 
     // Find the scaling factor of our torque range mapped to the PWM duty cycle
     // range (255 is the max duty cycle).
     double scaleFactor = 255 / maxTorque;
 
     // Scale the torque command to our duty cycle range.
-    int dutyRequest = abs(commandedTorque) * scaleFactor;
+    std::vector<float> dutyRequest(3);
+    dutyRequest = {abs(commandedTorque[0])*scaleFactor, abs(commandedTorque[1])*scaleFactor, abs(commandedTorque[2])*scaleFactor};
 
     // Set input A to match the direction of torque.
-    if (commandedTorque < 0) {
-        motor.MotorInAState(true);
-    }
-    else {
-        motor.MotorInAState(false);
-    }
+    checkMotorAState(commandedTorque);
+
     // Ensures this delay is at least 20ms longer than the Input A filter
     // setting in MSP
     delay(20 + INPUT_A_FILTER);
 
-    // Command the move
-    motor.MotorInBDuty(dutyRequest);
+    // switch over number of motor (there has to be a more elegant way to do this)
+    switch (num_motors){
+      case 1:
+        // Command the move
+        motor1.MotorInBDuty(dutyRequest[0]);
 
-    // Waits for HLFB to assert (signaling the move has successfully completed)
-    // Serial.println("Moving... Waiting for HLFB");
-    // Allow some time for HLFB to transition
-    delay(1);
+        // Waits for HLFB to assert (signaling the move has successfully completed)
+        // Serial.println("Moving... Waiting for HLFB");
+        // Allow some time for HLFB to transition
+        delay(1);
 
-    // TODO: careful about this, auto reenables after unasserted hlfb
-    if (motor.HlfbState() != MotorDriver::HLFB_ASSERTED) {
-      Serial.println("Motor Fault or Overspeed Timeout Detected!");
-      delay(5000);
-      motor.EnableRequest(false); // Disable motor
-      input1 = 1; // return tp state 1
+        // return to state one if the signal is not asserted
+        if (motor1.HlfbState() != MotorDriver::HLFB_ASSERTED) {
+          Serial.println("Motor Fault or Overspeed Timeout Detected!");
+          delay(200);
+          multipleMotorEnable(false); // Disable motor
+          // overwrite input1 
+          input[0] = '1';
+          return false;
+        }
+        break;
+      case 2:
+        // Command the move
+        motor1.MotorInBDuty(dutyRequest[0]);
+        motor2.MotorInBDuty(dutyRequest[1]);
+
+        // Waits for HLFB to assert (signaling the move has successfully completed)
+        // Serial.println("Moving... Waiting for HLFB");
+        // Allow some time for HLFB to transition
+        delay(1);
+
+        // return to state one if the signal is not asserted
+        if (motor1.HlfbState() != MotorDriver::HLFB_ASSERTED || motor2.HlfbState() != MotorDriver::HLFB_ASSERTED) {
+          Serial.println("Motor Fault or Overspeed Timeout Detected!");
+          delay(200);
+          multipleMotorEnable(false); // Disable motor
+          // overwrite input1 
+          input[0] = '1';
+          return false;
+        }
+        break;
+      case 3:
+        // Command the move
+        motor1.MotorInBDuty(dutyRequest[0]);
+        motor2.MotorInBDuty(dutyRequest[1]);
+        motor3.MotorInBDuty(dutyRequest[2]);
+
+        // Waits for HLFB to assert (signaling the move has successfully completed)
+        // Serial.println("Moving... Waiting for HLFB");
+        // Allow some time for HLFB to transition
+        delay(1);
+
+        // return to state one if the signal is not asserted
+        if (motor1.HlfbState() != MotorDriver::HLFB_ASSERTED || motor2.HlfbState() != MotorDriver::HLFB_ASSERTED || motor3.HlfbState() != MotorDriver::HLFB_ASSERTED) {
+          Serial.println("Motor Fault Detected! Returning to idle state");
+          delay(200);
+          multipleMotorEnable(false); // Disable motor
+          // overwrite input1 
+          input[0] = '1';
+          return false;
+        }
+        break;
+      default:
+        Serial.print("incompatible number of motors\n");
+        break;
     }
 
-    while(motor.HlfbState() != MotorDriver::HLFB_ASSERTED){
-
-      continue;
-    }
     // Serial.println("Move Done");
     return true;
 }
 //------------------------------------------------------------------------------
-

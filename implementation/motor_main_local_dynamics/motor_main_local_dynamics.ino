@@ -2,13 +2,13 @@
 //  potentially change this to allow the int input1 to be changed and not be overwritten by input array (or not, might be for the better)
 
 // TODO: motor 1 inverted (marked with x physucally)
-// TODO: automate motor number input (currently hard coded)
 // TODO: input a state should not be necessary to check, since we are torquing in one direction will only need one direction and not allow torque commands in the other direction.
 
 
 /*
  * Objective:
- *    Develop the data pipeline for each motor in the system
+ *    Develop the data pipeline for each motor in the system, the force determination will occur on the arduino sketch itself for this, so inputs 2,3,4 will be angle/lengths 
+ *    instead of force commands
  *
  * Requirements:
  * 1. A ClearPath motor must be connected to Connector M-0.
@@ -76,7 +76,7 @@ char input[IN_BUFFER_LEN+1];
 std::vector<float> float_inputs(4);
 
 // temp ensures we don't jump from state 1 to state 3, input1 is the state command
-int temp, input1 = 0;
+int prev_input1, input1 = 0;
 double input2, input3, input4; // torque/force command
 
 // defines start of test (entering state3)
@@ -86,15 +86,16 @@ double t_init = 0;
 bool test_start = false;
 
 // Declares helper functions
-bool CommandTorque(int commandedTorque);
+void getNumMotors();
 void multipleMotorEnable(bool request);
 void checkMotorAState(const std::vector<float>& commandedTorque);
+bool CommandTorque(int commandedTorque);
+
 
 void setup() {
     // Put your setup code here, it will only run once:
-
     // set digital and analog pins as inputs //
-
+    
 
     // Sets all motor connectors to the correct mode for Follow Digital
     // Torque mode.
@@ -109,7 +110,8 @@ void setup() {
         continue;
     }
 
-    // TODO: ask for number of motors
+    // ask for number of motors
+    getNumMotors();
 
     // set input1 to state 1
     input[0] = '1';
@@ -127,7 +129,7 @@ void loop() {
     int i = 0;
     char rc;
     char endMarker = '\n';
-    temp = input1;
+    prev_input1 = input1;
     // serial port messages in are currently of the form: state_input, input1, input2, input3
     while (Serial.available() > 0) {
       rc = Serial.read();
@@ -169,7 +171,7 @@ void loop() {
       case 1:
         {
           test_start = false;
-          // Serial.print("input 1 \n");
+          // Serial.print("state 1 \n");
 
           // disable motors
           if(motor1.EnableRequest()){
@@ -182,7 +184,7 @@ void loop() {
       case 2:
         {
           test_start = false;
-          // Serial.print("input 2 \n");
+          // Serial.print("state 2 \n");
           
           // enable motors but dont print data to serial port
           if(!motor1.EnableRequest()){
@@ -203,9 +205,9 @@ void loop() {
       case 3:
         {
           // cannot jump directly to state 3 from 1
-          if (temp == 1){
+          if (prev_input1 == 1){
             Serial.print("Invalid jump \n");
-            input1 = temp;
+            input[0] = '1';
             break;
           }
 
@@ -234,7 +236,40 @@ void loop() {
         break;
     }
 
+    // TODO: temporary delay
     delay(200);
+}
+
+void getNumMotors(){
+  // continue receiving inputs until valid motor number is entered
+  bool valid_input = false;
+  int i = 0;
+  char rc; // received character
+  char rint; // received int
+  char motor_num_in[IN_BUFFER_LEN+1];
+  while(!valid_input){
+    Serial.print("input number of motors\n");
+    // expect single character to be received
+    while(Serial.available() == 0){
+      continue;
+    }
+    while (Serial.available() > 0) {
+      rc = Serial.read();
+      motor_num_in[i] = rc;
+      i++;
+    }
+    
+    // convert char to int and check if it's within bounds
+    rint = atoi(motor_num_in);
+    if(rint < 1 || rint > 3){
+      Serial.print("input should be 1, 2, or 3\n");
+    }
+    else{
+      num_motors = rint;
+      valid_input = true;
+    }
+  }
+  return;
 }
 
 // enable or disable 1-3 motors depending on what num_motors is
@@ -262,54 +297,29 @@ void multipleMotorEnable(bool request){
 void checkMotorAState(const std::vector<float>& commandedTorque){
   switch (num_motors){
     case 1:
-      if (commandedTorque[0] < 0) {
-          motor1.MotorInAState(true);
-      }
-      else {
-          motor1.MotorInAState(false);
-      }
+      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      else {motor1.MotorInAState(false);}
       break;
     case 2:
-      if (commandedTorque[0] < 0) {
-          motor1.MotorInAState(true);
-      }
-      else {
-          motor1.MotorInAState(false);
-      }
+      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      else {motor1.MotorInAState(false);}
 
-      if (commandedTorque[1] < 0) {
-          motor2.MotorInAState(true);
-      }
-      else {
-          motor2.MotorInAState(false);
-      }
+      if (commandedTorque[1] < 0) {motor2.MotorInAState(true);}
+      else {motor2.MotorInAState(false);}
       break;
     case 3:
-      if (commandedTorque[0] < 0) {
-          motor1.MotorInAState(true);
-      }
-      else {
-          motor1.MotorInAState(false);
-      }
+      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      else {motor1.MotorInAState(false);}
 
-      if (commandedTorque[1] < 0) {
-          motor2.MotorInAState(true);
-      }
-      else {
-          motor2.MotorInAState(false);
-      }
+      if (commandedTorque[1] < 0) {motor2.MotorInAState(true);}
+      else {motor2.MotorInAState(false);}
 
-      if (commandedTorque[2] < 0) {
-          motor3.MotorInAState(true);
-      }
-      else {
-          motor3.MotorInAState(false);
-      }
+      if (commandedTorque[2] < 0) {motor3.MotorInAState(true);}
+      else {motor3.MotorInAState(false);}
       break;
     default:
       Serial.print("incompatible number of motors\n");
       break;
-
   }
 }
 
