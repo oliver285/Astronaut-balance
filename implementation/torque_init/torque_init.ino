@@ -3,14 +3,12 @@
 
 // TODO: motor 1 inverted (marked with x physucally)
 // TODO: automate motor number input (currently hard coded)
+// TODO: input a state should not be necessary to check, since we are torquing in one direction will only need one direction and not allow torque commands in the other direction.
 
 
 /*
  * Objective:
  *    Develop the data pipeline for each motor in the system
- *
- * Description:
- *    This file runs a proof of concept for the pipeline for one motor. It takes in 
  *
  * Requirements:
  * 1. A ClearPath motor must be connected to Connector M-0.
@@ -41,7 +39,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
-// weird shit going on with class between preprocessor min/max macros and std min/max
+// weird shit going on with class between preprocessor min/max macros and std min/max (undefine both of them)
 #ifdef min
 #undef min
 #endif
@@ -55,13 +53,13 @@
 // MSP (Advanced >> Input A, B Filtering...)
 #define INPUT_A_FILTER 20
 
-// Defines the motor's connector as ConnectorM0
+// Defines the motor connectors
 #define ioPort ConnectorUsb
 #define motor1 ConnectorM0
 #define motor2 ConnectorM1
 #define motor3 ConnectorM2
 
-// Select the baud rate to match the target device.
+// Select the baud rate and io port baud rate to match the target device.
 #define baudRate 115200
 #define ioPortBaudRate  115200
 
@@ -72,19 +70,22 @@ int num_motors = 2;
 // torque rating (must match the value used in MSP).
 double maxTorque = 100;
 
-// temporary may be used later
+// define serial buffer length and character input and float_input arrays
 #define IN_BUFFER_LEN 32
 char input[IN_BUFFER_LEN+1];
 std::vector<float> float_inputs(4);
+
+// temp ensures we don't jump from state 1 to state 3, input1 is the state command
 int temp, input1 = 0;
 double input2, input3, input4; // torque/force command
+
+// defines start of test (entering state3)
 double t_init = 0;
 
 // flag to tell input 3 to normalize millis()
 bool test_start = false;
 
-// Declares our user-defined helper function, which is used to command torque.
-// The definition/implementation of this function is at the bottom of the sketch.
+// Declares helper functions
 bool CommandTorque(int commandedTorque);
 void multipleMotorEnable(bool request);
 void checkMotorAState(const std::vector<float>& commandedTorque);
@@ -101,7 +102,6 @@ void setup() {
                           Connector::CPM_MODE_A_DIRECT_B_PWM);
 
     // Sets up serial communication and waits up to 5 seconds for a port to open
-    // Serial communication is not required for this example to run
     Serial.begin(baudRate);
     uint32_t timeout = 5000;
     uint32_t startTime = millis();
@@ -109,10 +109,14 @@ void setup() {
         continue;
     }
 
+    // TODO: ask for number of motors
 
-    // set up motor
+    // set input1 to state 1
+    input[0] = '1';
+
+    // set up motors to start loop disabled
     multipleMotorEnable(false);
-    Serial.println("Motor(s) Ready");
+    Serial.println(String(num_motors) + " Motor(s) Ready");
 }
 
 
@@ -166,20 +170,21 @@ void loop() {
         {
           test_start = false;
           // Serial.print("input 1 \n");
+
+          // disable motors
           if(motor1.EnableRequest()){
             multipleMotorEnable(false);
             Serial.print("motor(s) disabled \n");
           }
-          // motor.EnableRequest(false); // Disable motor
           break;
         }
 
       case 2:
         {
           test_start = false;
-
           // Serial.print("input 2 \n");
-          // Serial.println(motor.EnableRequest());
+          
+          // enable motors but dont print data to serial port
           if(!motor1.EnableRequest()){
             multipleMotorEnable(true);
             Serial.print("motor(s) enabled \n");
@@ -215,9 +220,7 @@ void loop() {
           std::vector<float> currCommand(3);
           currCommand = {maxTorque - input2, input3, maxTorque - input4};
           CommandTorque(currCommand);    // See below for the detailed function definition.
-          // Wait 2000ms.
-          // double hlfbP = motor.HlfbPercent();
-          // Serial.println(hlfbP);
+          // currently prints inputs, will prints load cell force outputs
           Serial.println(String(millis() - t_init, 4) + ", " + String(input2) + ", " + String(input3) + ", " + String(input4));
           delay(200);
 
@@ -232,16 +235,6 @@ void loop() {
     }
 
     delay(200);
-    // // Output 15% of the motor's peak torque in the positive (CCW) direction.
-    // CommandTorque(5);    // See below for the detailed function definition.
-    // // Wait 2000ms.
-    // delay(2000);
-
-    // CommandTorque(8); // Output 8% peak torque in the negative (CW) direction.
-    // delay(2000);
-
-
-    
 }
 
 // enable or disable 1-3 motors depending on what num_motors is
@@ -321,18 +314,7 @@ void checkMotorAState(const std::vector<float>& commandedTorque){
 }
 
 /*------------------------------------------------------------------------------
- * CommandTorque
- *
- *    Command the motor to move using a torque of commandedTorque
- *    Prints the move status to the USB serial port
- *    Returns when HLFB asserts (indicating the motor has reached the commanded
- *    torque)
- *
- * Parameters:
- *    int commandedTorque  - The torque to command
- *
- * Returns: True/False depending on whether the torque was successfully
- * commanded.
+ * CommandTorque commands set of up to three motors given vector of torque commands
  */
 bool CommandTorque(const std::vector<float>& commandedTorque) {
     for (int i = 0; i < (commandedTorque.size()-1); i++){
@@ -341,9 +323,6 @@ bool CommandTorque(const std::vector<float>& commandedTorque) {
           return false;
       }
     }
-	
-    // Serial.print("Commanding torque: ");
-    // Serial.println(commandedTorque);
 
     // Find the scaling factor of our torque range mapped to the PWM duty cycle
     // range (255 is the max duty cycle).
@@ -378,6 +357,7 @@ bool CommandTorque(const std::vector<float>& commandedTorque) {
           multipleMotorEnable(false); // Disable motor
           // overwrite input1 
           input[0] = '1';
+          return false;
         }
         break;
       case 2:
@@ -397,6 +377,7 @@ bool CommandTorque(const std::vector<float>& commandedTorque) {
           multipleMotorEnable(false); // Disable motor
           // overwrite input1 
           input[0] = '1';
+          return false;
         }
         break;
       case 3:
@@ -412,11 +393,12 @@ bool CommandTorque(const std::vector<float>& commandedTorque) {
 
         // return to state one if the signal is not asserted
         if (motor1.HlfbState() != MotorDriver::HLFB_ASSERTED || motor2.HlfbState() != MotorDriver::HLFB_ASSERTED || motor3.HlfbState() != MotorDriver::HLFB_ASSERTED) {
-          Serial.println("Motor Fault or Overspeed Timeout Detected!");
+          Serial.println("Motor Fault Detected! Returning to idle state");
           delay(200);
           multipleMotorEnable(false); // Disable motor
           // overwrite input1 
           input[0] = '1';
+          return false;
         }
         break;
       default:

@@ -209,61 +209,62 @@ void loop() {
   // // float teth3_posY = analogRead(B1);
   // // float teth3_posZ = analogRead(B1);
 
-  // float r = 1.0;  // Example radius value
-  // int mass = 200;
-  // //  BLA::Matrix<3,1,float> apex = {1,2,3}; 
-  // BLA::Matrix<3, 1, float> lengths = {
-  //   5.0,
-  //   5.0,
-  //   5.0
-  // };
-  // BLA::Matrix<3, 1, float> p = {2.0,2.0,-4.0};
-  // BLA::Matrix<3, 1, float> apex;
-  // // Compute tether attachment points
-  // BLA::Matrix<3, 3, float> teth_anchor = { 
-  //     2.0, 0.0, 0.0 ,  
-  //     2.0 * cos(DEG_TO_RAD(225)), 2.0 * sin(DEG_TO_RAD(225)), 0.0 ,  
-  //     2.0 * cos(DEG_TO_RAD(135)), 2.0 * sin(DEG_TO_RAD(135)), 0.0  
-  // };
+  float r = 1.0;  // Example radius value
+  int mass = 200;
+  //  BLA::Matrix<3,1,float> apex = {1,2,3}; 
+  BLA::Matrix<3, 1, float> lengths = {
+    5.0,
+    5.0,
+    5.0
+  };
+  BLA::Matrix<3, 1, float> p = {2.0,2.0,-4.0};
+  BLA::Matrix<3, 1, float> apex;
+  // Compute tether attachment points
+  BLA::Matrix<3, 3, float> teth_anchor = { 
+      2.0, 0.0, 0.0 ,  
+      2.0 * cos(DEG_TO_RAD(225)), 2.0 * sin(DEG_TO_RAD(225)), 0.0 ,  
+      2.0 * cos(DEG_TO_RAD(135)), 2.0 * sin(DEG_TO_RAD(135)), 0.0  
+  };
 
-  // // Compute attachment offset vectors
-  // BLA::Matrix<3, 3, float> offset = { 
-  //     -r, 0.0, 0.0 ,  
-  //     -r * cos(DEG_TO_RAD(225)), -r * sin(DEG_TO_RAD(225)), 0.0 ,  
-  //     -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
-  // };
-  // // Put your main code here, it will run repeatedly:
+  // Compute attachment offset vectors
+  BLA::Matrix<3, 3, float> offset = { 
+      -r, 0.0, 0.0 ,  
+      -r * cos(DEG_TO_RAD(225)), -r * sin(DEG_TO_RAD(225)), 0.0 ,  
+      -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
+  };
+  // Put your main code here, it will run repeatedly:
 
-  // // int i = 0;
-  // // strcpy(temp, input);
-
-
-  // // while(i<3 && ioPort.CharPeek() != -1){
-  // // Serial.println("Enter tether length " + String(i) + "\n");
-
-  // //   input[i] = (float) ioPort.CharGet();
-  // //   i++;
-  // //   // valid_input_flag
-  // // Delay_ms(1);
-  // // }
-
-  // // lengths(1) = input[1];
-  // // lengths(2) = input[2];
-  // // lengths(3) = input[3];
+  // int i = 0;
+  // strcpy(temp, input);
 
 
+  // while(i<3 && ioPort.CharPeek() != -1){
+  // Serial.println("Enter tether length " + String(i) + "\n");
 
-  // apex =newtonSolve( p, lengths, teth_anchor, offset);
+  //   input[i] = (float) ioPort.CharGet();
+  //   i++;
+  //   // valid_input_flag
+  // Delay_ms(1);
+  // }
 
-  // Serial.println("lengths : " + String(lengths(0)) + ", " + String(lengths(1)) + ", " + String(lengths(2)) + "\n");
-  // Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
-  // // delay(5000);
+  // lengths(1) = input[1];
+  // lengths(2) = input[2];
+  // lengths(3) = input[3];
 
 
-  // //BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
 
-  // //BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
+  apex =newtonSolve( p, lengths, teth_anchor, offset);
 
+  Serial.println("lengths : " + String(lengths(0)) + ", " + String(lengths(1)) + ", " + String(lengths(2)) + "\n");
+  Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
+  
+
+
+  // BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
+
+  BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
+  Serial.println("force : " + String(forces(0)) + ", " + String(forces(1)) + ", " + String(forces(2)) + "\n");
+  delay(5000);
 
   // // // Output 15% of the motor's peak torque in the positive (CCW) direction.
   // // CommandTorque(15);    // See below for the detailed function definition.

@@ -378,7 +378,7 @@ def main():
     t1 = 0
     
     # Set tilt axis ('x' or 'y')
-    tilt_axis = 'z'
+    tilt_axis = 'x'
     
     # Generate COM movement and tilt angles
     positions, tilt_angles = simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis)
@@ -479,6 +479,8 @@ def main():
     # Plot results
     plot_simulation_results(time_vec, positions, tilt_angles, f_errors, ang_errors, apex_error, torques, tilt_axis,
                             tether1_vec, tether2_vec, tether3_vec, err_teth_one_vec, err_teth_two_vec, err_teth_three_vec, max_hip_tilt, length_vec)
+
+    print(12*length_vec[-1])
     
     plt.show()
    
