@@ -75,7 +75,7 @@ BLA::Matrix<3, 3, float> jacobian(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, flo
 void swap(float& a, float& b);
 BLA::Matrix<3, 1, float> solveSystem(BLA::Matrix<3, 3, float> A, BLA::Matrix<3, 1, float> b);
 BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3,1, float> p,BLA::Matrix<3,1, float> tether_lengths,BLA::Matrix<3, 3, float> teth_anchor,BLA::Matrix<3, 3, float> offset);
-BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset);
+BLA::Matrix<3, 3, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset);
 BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset);
 
 using namespace BLA;
@@ -88,8 +88,8 @@ using namespace BLA;
 // Defines the motor's connector as ConnectorM0
 #define motor ConnectorM0
 
-#define Maxiterations 50
-#define TOL 1e-6 
+#define Maxiterations 5000000
+#define TOL 1e-3 
 // Select the baud rate to match the target device.
 #define baudRate 9600
 
@@ -122,6 +122,10 @@ void printMatrix(const BLA::Matrix<rows, cols, T>& mat) {
 
 
 void setup() {
+
+  double current_time;
+  double new_time;
+  double elapsed_time;
     // Put your setup code here, it will only run once:
 
     Serial.begin(115200); // Start serial communication
@@ -190,9 +194,9 @@ void setup() {
   // lengths(3) = input[3];
 
 
-  Serial.print("-----------------------------------------------------------------------------------------------\n");
-  apex =newtonSolve( p, lengths, teth_anchor, offset);
-  Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
+  //Serial.print("-----------------------------------------------------------------------------------------------\n");
+ 
+  //Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
 }
 
 
@@ -213,11 +217,11 @@ void loop() {
   int mass = 200;
   //  BLA::Matrix<3,1,float> apex = {1,2,3}; 
   BLA::Matrix<3, 1, float> lengths = {
-    5.0,
-    5.0,
-    5.0
+    4.0,
+    4.5,
+    4.3
   };
-  BLA::Matrix<3, 1, float> p = {2.0,2.0,-4.0};
+  BLA::Matrix<3, 1, float> p = {2,2,-4};
   BLA::Matrix<3, 1, float> apex;
   // Compute tether attachment points
   BLA::Matrix<3, 3, float> teth_anchor = { 
@@ -236,7 +240,9 @@ void loop() {
 
   // int i = 0;
   // strcpy(temp, input);
-
+ double current_time;
+  double new_time;
+  double elapsed_time;
 
   // while(i<3 && ioPort.CharPeek() != -1){
   // Serial.println("Enter tether length " + String(i) + "\n");
@@ -253,16 +259,15 @@ void loop() {
 
 
 
+   current_time = millis();
   apex =newtonSolve( p, lengths, teth_anchor, offset);
-
-  Serial.println("lengths : " + String(lengths(0)) + ", " + String(lengths(1)) + ", " + String(lengths(2)) + "\n");
-  Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
-  
-
-
-  // BLA::Matrix<3, 4, float> tether_vectors = calculate_tether_vecs(COM, teth_anchor, offset);
-
   BLA::Matrix<3,1,float> forces = calculate_tether_forces( apex, mass, teth_anchor,offset);
+   new_time= millis();
+  elapsed_time = new_time-current_time;
+  
+  
+  Serial.println("Elapsed time: "+String(elapsed_time)+"\n");
+  Serial.println("Apex : " + String(apex(0)) + ", " + String(apex(1)) + ", " + String(apex(2)) + "\n");
   Serial.println("force : " + String(forces(0)) + ", " + String(forces(1)) + ", " + String(forces(2)) + "\n");
   delay(5000);
 
@@ -433,23 +438,23 @@ BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3, 1, float> p,
         // Compute function values
         F = equations(p, teth_anchor, offset, tether_lengths);
         
-        Serial.print("Iteration: "); Serial.println(iter);
-        Serial.println("Current p:");
-        printMatrix(p);
+     //   Serial.print("Iteration: "); Serial.println(iter);
+       // Serial.println("Current p:");
+    //    printMatrix(p);
 
-        Serial.println("F(p):");
-        printMatrix(F);
+       // Serial.println("F(p):");
+      //  printMatrix(F);
 
         // Compute Jacobian
         J = jacobian(p, tether_lengths, teth_anchor, offset);
         
-        Serial.println("Jacobian:");
-        printMatrix(J);
+       // Serial.println("Jacobian:");
+      //  printMatrix(J);
 
         // Check if the Jacobian is nearly singular
         float det_J = Determinant(J);
-        Serial.print("Determinant of Jacobian: ");
-        Serial.println(det_J);
+       // Serial.print("Determinant of Jacobian: ");
+       // Serial.println(det_J);
 
         if (abs(det_J) < 1e-6) { 
             Serial.println("Jacobian is nearly singular! Stopping.");
@@ -459,8 +464,8 @@ BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3, 1, float> p,
         // Solve J * delta_p = -F
         delta_p = solveSystem(J, -F);
 
-        Serial.println("delta_p:");
-        printMatrix(delta_p);
+    //    Serial.println("delta_p:");
+     //   printMatrix(delta_p);
 
         // Update solution
         for (int i = 0; i < 3; i++) {
@@ -480,34 +485,52 @@ BLA::Matrix<3, 1, float> newtonSolve(BLA::Matrix<3, 1, float> p,
 
 
 // find tether unit vectors
-BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
+BLA::Matrix<3, 3, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
   // Define tether vectors
   BLA::Matrix<3, 1, float> tethvec1, tethvec2, tethvec3;
   BLA::Matrix<3, 1, float> teth1_hat, teth2_hat, teth3_hat;
-
+  BLA::Matrix<3, 3, float> ANS;
   // Compute tether vectors
   for (int i = 0; i < 3; i++) {
-    tethvec1(i, 0) = teth_anchor(i, 0) - (COM(i, 0) - offset(i, 0));
-    tethvec2(i, 0) = teth_anchor(i, 1) - (COM(i, 0) - offset(i, 1));
-    tethvec3(i, 0) = teth_anchor(i, 2) - (COM(i, 0) - offset(i, 2));
+    tethvec1(i, 0) = teth_anchor(0, i) - (COM(i, 0) - offset(0, i));
+    tethvec2(i, 0) = teth_anchor(1, i) - (COM(i, 0) - offset(1, i));
+    tethvec3(i, 0) = teth_anchor(2, i) - (COM(i, 0) - offset(2, i));
   }
 
   // Normalize tether vectors to get unit vectors
-  teth1_hat = tethvec1 / sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
-  teth2_hat = tethvec2 / sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
-  teth3_hat = tethvec3 / sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
+ // Compute norm of tether vectors
+float norm_teth1 = sqrt(tethvec1(0,0) * tethvec1(0,0) + tethvec1(1,0) * tethvec1(1,0) + tethvec1(2,0) * tethvec1(2,0));
+float norm_teth2 = sqrt(tethvec2(0,0) * tethvec2(0,0) + tethvec2(1,0) * tethvec2(1,0) + tethvec2(2,0) * tethvec2(2,0));
+float norm_teth3 = sqrt(tethvec3(0,0) * tethvec3(0,0) + tethvec3(1,0) * tethvec3(1,0) + tethvec3(2,0) * tethvec3(2,0));
 
-  // Define result matrix (3x4)
-  BLA::Matrix<3, 4, float> ANS;
-  for (int i = 0; i < 3; i++) {
-    ANS(0,i) = teth1_hat(i);
-    ANS(1,i) = teth1_hat(i);
-    ANS(2,i) = teth1_hat(i);
-  }
+// Avoid division by zero
 
-  ANS(0, 3) = sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
-  ANS(1, 3) = sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
-  ANS(2, 3) = sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
+    for (int i = 0; i < 3; i++) {
+        teth1_hat(i, 0) = tethvec1(i, 0) / norm_teth1;
+         teth2_hat(i, 0) = tethvec2(i, 0) / norm_teth2;
+          teth3_hat(i, 0) = tethvec3(i, 0) / norm_teth3;
+           ANS(i, 0) = teth1_hat(i, 0);  // Assign teth1_hat to column 0
+    ANS(i, 1) = teth2_hat(i, 0);  // Assign teth2_hat to column 1
+    ANS(i, 2) = teth3_hat(i, 0);  // Assign teth3_hat to column 2
+    }
+
+
+
+
+
+//   // Define result matrix (3x4)
+//   BLA::Matrix<3, 3, float> ANS;
+
+// for (int i = 0; i < 3; i++) {
+//     ANS(i, 0) = teth1_hat(i, 0);  // Assign teth1_hat to column 0
+//     ANS(i, 1) = teth2_hat(i, 0);  // Assign teth2_hat to column 1
+//     ANS(i, 2) = teth3_hat(i, 0);  // Assign teth3_hat to column 2
+// }
+  
+
+  // ANS(0, 3) = sqrt(tethvec1(0, 0) * tethvec1(0, 0) + tethvec1(1, 0) * tethvec1(1, 0) + tethvec1(2, 0) * tethvec1(2, 0));
+  // ANS(1, 3) = sqrt(tethvec2(0, 0) * tethvec2(0, 0) + tethvec2(1, 0) * tethvec2(1, 0) + tethvec2(2, 0) * tethvec2(2, 0));
+  // ANS(2, 3) = sqrt(tethvec3(0, 0) * tethvec3(0, 0) + tethvec3(1, 0) * tethvec3(1, 0) + tethvec3(2, 0) * tethvec3(2, 0));
 
   return ANS;
 }
@@ -515,15 +538,17 @@ BLA::Matrix<3, 4, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA:
 // calculae tether forces given apex, anchor locations, and mass
 BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset) {
     // Compute unit vectors
-    BLA::Matrix<3, 4, float> Initial_Matrix = calculate_tether_vecs(apex, teth_anchor, offset);
-
+    BLA::Matrix<3, 3, float> M1 = calculate_tether_vecs(apex, teth_anchor, offset);
+//printMatrix(Initial_Matrix);
     // Extract the first 3 columns as a 3x3 matrix
-    BLA::Matrix<3, 3, float> M1;
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            M1(i, j) = Initial_Matrix(i, j);
-        }
-    }
+   // BLA::Matrix<3, 3, float> M1;
+    // for (int i = 0; i < 3; i++) {
+    //     for (int j = 0; j < 3; j++) {
+    //         M1(i, j) = Initial_Matrix(i, j);
+    //     }
+    // }
+
+
 
     // Define force matrix M2
     BLA::Matrix<3, 1, float> M2;
@@ -533,6 +558,7 @@ BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, i
 
     // Solve for forces using matrix inversion
     BLA::Matrix<3, 1, float> F = Inverse(M1) * M2;  // 
+
 
     return F;  // Return the calculated tether forces
 }
