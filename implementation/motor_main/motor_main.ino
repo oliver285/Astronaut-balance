@@ -1,8 +1,11 @@
 // TODO: when hitting errors and returning tp base state, the chracter array input[0] has to be changed or else the jump will not be acknowledged,
 //  potentially change this to allow the int input1 to be changed and not be overwritten by input array (or not, might be for the better)
 
-// TODO: motor 1 inverted (marked with x physucally)
+// TODO: motor 1 inverted (marked with x physically)
 // TODO: input a state should not be necessary to check, since we are torquing in one direction will only need one direction and not allow torque commands in the other direction.
+
+// TODO: verify that adc readings are feeding correctly and motors are being commanded correctly
+// TODO: clean up global and local variables, it's a mess
 
 
 /*
@@ -63,21 +66,31 @@
 #define baudRate 115200
 #define ioPortBaudRate  115200
 
+// load cell parameters
+#define adcResolution 12
+#define LOAD_CELL_MAX_FORCE 220.462 // lbs
+const int analogPins[3] = {A10, A11, A12};
+// empirically determined linear scale factor of the load cell
+double scale_factor[3] = {1.1316, 1.1316, 1.1316};
+// this offset is from the load cell hanging vertically 
+double offset[3] = {1.4, 1.4, 1.4};
+double load_cell[3] = {0, 0, 0};
+
+
+
 // define number of motors being used
-int num_motors = 2;
+int num_motors = 0;
 
 // Defines the limit of the torque command, as a percent of the motor's peak
 // torque rating (must match the value used in MSP).
 double maxTorque = 100;
-
+double maxTorqueMag = 14.0; // Nm
 // define serial buffer length and character input and float_input arrays
 #define IN_BUFFER_LEN 32
 char input[IN_BUFFER_LEN+1];
-std::vector<float> float_inputs(4);
 
 // temp ensures we don't jump from state 1 to state 3, input1 is the state command
 int prev_input1, input1 = 0;
-double input2, input3, input4; // torque/force command
 
 // defines start of test (entering state3)
 double t_init = 0;
@@ -86,6 +99,8 @@ double t_init = 0;
 bool test_start = false;
 
 // Declares helper functions
+double force2Torque(double force);
+void readLoadCell();
 void getNumMotors();
 void multipleMotorEnable(bool request);
 void checkMotorAState(const std::vector<float>& commandedTorque);
@@ -109,6 +124,9 @@ void setup() {
     while (!Serial && millis() - startTime < timeout) {
         continue;
     }
+
+    // Set the resolution of the ADC.
+    analogReadResolution(adcResolution);
 
     // ask for number of motors
     getNumMotors();
@@ -148,6 +166,8 @@ void loop() {
     char input_temp[IN_BUFFER_LEN+1];
     strcpy(input_temp, input);
 
+    std::vector<float> float_inputs(4);
+
     char *token = strtok(input_temp, ",");
     while(token != nullptr){
       if(i > 4){
@@ -161,10 +181,21 @@ void loop() {
         i++;
     }
 
+    // save off state to input 1
     input1 = float_inputs[0];
-    input2 = float_inputs[1];
-    input3 = float_inputs[2];
-    input4 = float_inputs[3];
+    // convert force inputs into motor command (% of max torque)
+    std::vector<float> currCommand(3);
+    for(int i = 0; i<3; i++){
+      currCommand[i] = force2Torque(float_inputs[i+1]);
+      // TODO: temporary if to invert the first motor signal
+      if (i == 0){
+        currCommand[i] = maxTorque - currCommand[i];
+      }
+    }
+
+    // read the load cells
+    readLoadCell();
+    Serial.println(String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
 
 
     switch(input1){
@@ -192,10 +223,6 @@ void loop() {
             Serial.print("motor(s) enabled \n");
           }
 
-          // TODO: currently inverted
-          // TODO: need force to torque conversion here
-          std::vector<float> currCommand(3);
-          currCommand = {maxTorque - input2, input3, maxTorque - input4};;
           CommandTorque(currCommand);    // See below for the detailed function definition.
           // Wait 2000ms.
 
@@ -217,13 +244,19 @@ void loop() {
             test_start = true;
           }
 
-          // TODO: currently inverted
-          // TODO: need force to torque conversion here
-          std::vector<float> currCommand(3);
-          currCommand = {maxTorque - input2, input3, maxTorque - input4};
           CommandTorque(currCommand);    // See below for the detailed function definition.
-          // currently prints inputs, will prints load cell force outputs
-          Serial.println(String(millis() - t_init, 4) + ", " + String(input2) + ", " + String(input3) + ", " + String(input4));
+          // prints load cell outputs, depends on numbers of motors connected
+          switch (num_motors){
+            case 1:
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + "\n");
+              break;
+            case 2:
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + "\n");
+              break;
+            case 3:
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+              break;
+          }
           delay(200);
 
           break;
@@ -240,6 +273,29 @@ void loop() {
     delay(200);
 }
 
+// input force returns torque command as percentage of max torque
+double force2Torque(double force){
+  // 94.48 (N/Nm)
+  // 21.241 (lbf/Nm)
+  double torque = (1.0/21.241)*force;
+  return (torque/maxTorqueMag*100);
+}
+
+void readLoadCell(){
+  int adcResult = 0;
+  double inputVoltage = 0;
+  double force = 0;
+  for (int i = 0; i<3; i++){
+    adcResult = analogRead(analogPins[i]);
+    inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
+    force = scale_factor[i]*((inputVoltage/10)*LOAD_CELL_MAX_FORCE - offset[i]);
+    // load_cell[i] = force;
+    load_cell[i] = adcResult;
+  }
+}
+
+
+// get the number of motors currently attached based on user 
 void getNumMotors(){
   // continue receiving inputs until valid motor number is entered
   bool valid_input = false;
