@@ -65,13 +65,24 @@
 #define baudRate 115200
 #define ioPortBaudRate  115200
 
-// define number of motors being used
-int num_motors = 2;
+// load cell parameters
+#define adcResolution 12
+#define LOAD_CELL_MAX_FORCE 220.462 // lbs
+const int analogPins[3] = {A10, A11, A12};
+// empirically determined linear scale factor of the load cell
+double scale_factor[3] = {1.1316, 1.1316, 1.1316};
+// this offset is from the load cell hanging vertically 
+double offset[3] = {1.4, 1.4, 1.4};
+double load_cell[3] = {0, 0, 0};
 
 // Defines the limit of the torque command, as a percent of the motor's peak
 // torque rating (must match the value used in MSP).
 double maxTorque = 100;
-
+// flag to determine whether the torque has to be ramped from zero or not
+ bool ramp_done = false;
+ 
+ // Declares helper functions
+ void ramp_up_motor(const std::vector<float>& commandedTorque);
 // define serial buffer length and character input and float_input arrays
 #define IN_BUFFER_LEN 32
 char input[IN_BUFFER_LEN+1];
@@ -86,6 +97,34 @@ double t_init = 0;
 
 // flag to tell input 3 to normalize millis()
 bool test_start = false;
+// define number of motors being used
+int num_motors = 0;
+
+// Defines the limit of the torque command, as a percent of the motor's peak
+// torque rating (must match the value used in MSP).
+//double maxTorque = 100;
+double maxTorqueMag = 14.0; // Nm
+// define serial buffer length and character input and float_input arrays
+#define IN_BUFFER_LEN 32
+//char input[IN_BUFFER_LEN+1];
+
+// temp ensures we don't jump from state 1 to state 3, input1 is the state command
+//int prev_input1, input1 = 0;
+
+// defines start of test (entering state3)
+//double t_init = 0;
+
+// flag to tell input 3 to normalize millis()
+//bool test_start = false;
+
+// Declares helper functions
+double force2Torque(double force);
+void readLoadCell();
+void getNumMotors();
+void multipleMotorEnable(bool request);
+void checkMotorAState(const std::vector<float>& commandedTorque);
+bool CommandTorque(int commandedTorque);
+
 
 
 using namespace BLA;
@@ -101,6 +140,28 @@ BLA::Matrix<3, 3, float> calculate_tether_vecs(BLA::Matrix<3,1, float> COM, BLA:
 BLA::Matrix<3, 1, float> calculate_tether_forces(BLA::Matrix<3,1, float> apex, int mass, BLA::Matrix<3, 3, float> teth_anchor, BLA::Matrix<3, 3, float> offset);
 #define Maxiterations 500
 #define TOL 1e-3 
+#define DEG_TO_RAD(angle) ((angle) * (M_PI / 180.0))  // Convert degrees to radians
+ float r = 1.0;  // Example radius value
+  int mass = 200;
+  //  BLA::Matrix<3,1,float> apex = {1,2,3}; 
+  BLA::Matrix<3, 1, float> lengths;
+ //initial guess
+  BLA::Matrix<3, 1, float> p = {2.0,2.0,-4.0};
+  BLA::Matrix<3, 1, float> apex;
+  BLA::Matrix<3,1,float> forces;
+  // Compute tether attachment points
+  BLA::Matrix<3, 3, float> teth_anchor = { 
+      2.0, 0.0, 0.0 ,  
+      2.0 * cos(DEG_TO_RAD(225)), 2.0 * sin(DEG_TO_RAD(225)), 0.0 ,  
+      2.0 * cos(DEG_TO_RAD(135)), 2.0 * sin(DEG_TO_RAD(135)), 0.0  
+  };
+
+  // Compute attachment offset vectors
+  BLA::Matrix<3, 3, float> offsets = { 
+      -r, 0.0, 0.0 ,  
+      -r * cos(DEG_TO_RAD(225)), -r * sin(DEG_TO_RAD(225)), 0.0 ,  
+      -r * cos(DEG_TO_RAD(135)), -r * sin(DEG_TO_RAD(135)), 0.0  
+  };
 // end of dynamic model functions
 
 
@@ -145,7 +206,7 @@ void setup() {
 void loop() {
     // Put your main code here, it will run repeatedly:
   
-    // read serial port
+   // read serial port
     int i = 0;
     char rc;
     char endMarker = '\n';
@@ -172,7 +233,7 @@ void loop() {
     while(token != nullptr){
       if(i > 4){
         Serial.println("to many serial inputs");
-        // if command greater than 4 inputs, send idle state with zero forces
+        // if command greater than 4 inputs, send idle state with zero lengths
         float_inputs = {1,0,0,0};
         break;
         }
@@ -182,15 +243,19 @@ void loop() {
     }
 
     input1 = float_inputs[0];
-    input2 = float_inputs[1];
-    input3 = float_inputs[2];
-    input4 = float_inputs[3];
-
-
+    //input2 = float_inputs[1];
+    lengths(0) = float_inputs[1];
+     lengths(1) = float_inputs[2];
+     lengths(2) = float_inputs[3];
+ // read the load cells
+    readLoadCell();
+    Serial.println(String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+  std::vector<float> currCommand(3);
     switch(input1){
       case 1:
         {
-          test_start = false;
+            test_start = false;
+             ramp_done = false;
           // Serial.print("state 1 \n");
 
           // disable motors
@@ -203,7 +268,7 @@ void loop() {
 
       case 2:
         {
-          test_start = false;
+              test_start = false;
           // Serial.print("state 2 \n");
           
           // enable motors but dont print data to serial port
@@ -214,9 +279,20 @@ void loop() {
 
           // TODO: currently inverted
           // TODO: need force to torque conversion here
-          std::vector<float> currCommand(3);
-          currCommand = {maxTorque - input2, input3, maxTorque - input4};;
-          CommandTorque(currCommand);    // See below for the detailed function definition.
+     
+           apex =newtonSolve( p, lengths, teth_anchor, offsets);
+           forces = calculate_tether_forces( apex, mass, teth_anchor,offsets);
+            p=apex;
+          currCommand = {force2Torque(forces(0)), force2Torque(forces(1)),force2Torque(forces(2))};
+
+          if(!ramp_done){
+             ramp_up_motor(currCommand);
+             ramp_done = true;
+           }
+           else{
+             CommandTorque(currCommand);    // See below for the detailed function definition.
+           }
+       //   CommandTorque(currCommand);    // See below for the detailed function definition.
           // Wait 2000ms.
 
           break;
@@ -224,7 +300,7 @@ void loop() {
 
       case 3:
         {
-          // cannot jump directly to state 3 from 1
+        // cannot jump directly to state 3 from 1
           if (prev_input1 == 1){
             Serial.print("Invalid jump \n");
             input[0] = '1';
@@ -239,11 +315,30 @@ void loop() {
 
           // TODO: currently inverted
           // TODO: need force to torque conversion here
-          std::vector<float> currCommand(3);
-          currCommand = {maxTorque - input2, input3, maxTorque - input4};
-          CommandTorque(currCommand);    // See below for the detailed function definition.
-          // currently prints inputs, will prints load cell force outputs
-          Serial.println(String(millis() - t_init, 4) + ", " + String(input2) + ", " + String(input3) + ", " + String(input4));
+       
+          apex =newtonSolve( p, lengths, teth_anchor, offsets);
+           forces = calculate_tether_forces( apex, mass, teth_anchor,offsets);
+            p=apex;
+          currCommand = { force2Torque(forces(0)), force2Torque(forces(1)),force2Torque(forces(2))};
+    if(!ramp_done){
+             ramp_up_motor(currCommand);
+             ramp_done = true;
+           }
+           else{
+             CommandTorque(currCommand);    // See below for the detailed function definition.
+           }
+          // prints load cell outputs, depends on numbers of motors connected
+          switch (num_motors){
+            case 1:
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + "\n");
+              break;
+            case 2:
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + "\n");
+              break;
+            case 3:
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+              break;
+          }
           delay(200);
 
           break;
@@ -260,6 +355,58 @@ void loop() {
     delay(200);
 }
 
+
+
+void ramp_up_motor(const std::vector<float>& commandedTorque){
+   // time to ramp up to commanded torque
+   double ramp_time = 15.0;
+   // number of increments to take with torque
+   double increments = 100.0;
+   // time to delay each loop during ramp up
+   unsigned long delay_time = 1000.0*(ramp_time/increments);
+   std::vector<float> ramped_torque(3);
+ 
+   Serial.print("Motors ramping\n");
+   for (double i = 0.0; i<increments; i++){
+     for (int j = 0; j<3; j++){
+       ramped_torque[j] = (i/100.0)*commandedTorque[j];
+     }
+     CommandTorque(ramped_torque);
+     // delay 300 ms corresponds to 30 seconds ramp up time
+     delay(delay_time);
+   }
+   Serial.print("Motors ramped to commanded torque\n");
+ }
+
+
+
+// input force returns torque command as percentage of max torque
+double force2Torque(double force){
+  // 94.48 (N/Nm)
+  // 21.241 (lbf/Nm)
+  double torque = (1.0/21.241)*force;
+  
+  return (torque/maxTorqueMag*100);
+}
+
+void readLoadCell(){
+  int adcResult = 0;
+  double inputVoltage = 0;
+  double force = 0;
+  for (int i = 0; i<3; i++){
+    adcResult = analogRead(analogPins[i]);
+    inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
+    force = scale_factor[i]*((inputVoltage/10)*LOAD_CELL_MAX_FORCE - offset[i]);
+    // load_cell[i] = force;
+    //load_cell[i] = adcResult;
+        load_cell[i] = force;
+     // load_cell[i] = inputVoltage;
+     // load_cell[i] = adcResult;
+  }
+}
+
+
+// get the number of motors currently attached based on user 
 void getNumMotors(){
   // continue receiving inputs until valid motor number is entered
   bool valid_input = false;
