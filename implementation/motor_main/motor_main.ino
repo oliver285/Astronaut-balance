@@ -97,8 +97,11 @@ double t_init = 0;
 
 // flag to tell input 3 to normalize millis()
 bool test_start = false;
+// flag to determine whether the torque has to be ramped from zero or not
+bool ramp_done = false;
 
 // Declares helper functions
+void ramp_up_motor(const std::vector<float>& commandedTorque);
 double force2Torque(double force);
 void readLoadCell();
 void getNumMotors();
@@ -186,11 +189,8 @@ void loop() {
     // convert force inputs into motor command (% of max torque)
     std::vector<float> currCommand(3);
     for(int i = 0; i<3; i++){
-      currCommand[i] = force2Torque(float_inputs[i+1]);
-      // TODO: temporary if to invert the first motor signal
-      if (i == 0){
-        currCommand[i] = maxTorque - currCommand[i];
-      }
+      // currCommand[i] = force2Torque(float_inputs[i+1]);
+      currCommand[i] = 5.0;
     }
 
     // read the load cells
@@ -202,6 +202,7 @@ void loop() {
       case 1:
         {
           test_start = false;
+          ramp_done = false;
           // Serial.print("state 1 \n");
 
           // disable motors
@@ -223,7 +224,13 @@ void loop() {
             Serial.print("motor(s) enabled \n");
           }
 
-          CommandTorque(currCommand);    // See below for the detailed function definition.
+          if(!ramp_done){
+            ramp_up_motor(currCommand);
+            ramp_done = true;
+          }
+          else{
+            CommandTorque(currCommand);    // See below for the detailed function definition.
+          }
           // Wait 2000ms.
 
           break;
@@ -273,6 +280,28 @@ void loop() {
     delay(200);
 }
 
+// slowly ramp up the motor to the desired force whenever the state goes from 1 to 2, assumes motors are already enabled
+void ramp_up_motor(const std::vector<float>& commandedTorque){
+  // time to ramp up to commanded torque
+  double ramp_time = 15.0;
+  // number of increments to take with torque
+  double increments = 100.0;
+  // time to delay each loop during ramp up
+  unsigned long delay_time = 1000.0*(ramp_time/increments);
+  std::vector<float> ramped_torque(3);
+
+  Serial.print("Motors ramping\n");
+  for (double i = 0.0; i<increments; i++){
+    for (int j = 0; j<3; j++){
+      ramped_torque[j] = (i/100.0)*commandedTorque[j];
+    }
+    CommandTorque(ramped_torque);
+    // delay 300 ms corresponds to 30 seconds ramp up time
+    delay(delay_time);
+  }
+  Serial.print("Motors ramped to commanded torque\n");
+}
+
 // input force returns torque command as percentage of max torque
 double force2Torque(double force){
   // 94.48 (N/Nm)
@@ -289,8 +318,9 @@ void readLoadCell(){
     adcResult = analogRead(analogPins[i]);
     inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
     force = scale_factor[i]*((inputVoltage/10)*LOAD_CELL_MAX_FORCE - offset[i]);
-    // load_cell[i] = force;
-    load_cell[i] = adcResult;
+    load_cell[i] = force;
+    // load_cell[i] = inputVoltage;
+    // load_cell[i] = adcResult;
   }
 }
 
