@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import serial
 import serial.tools.list_ports
-from Dynamic_model_class import three_teth_model
+from three_Tether_Dynamic_Model_eqs import three_teth_model
 import sys
 import time
 import numpy as np
@@ -25,8 +25,11 @@ class ThreeTetherGUI:
         self.baud_rate = tk.StringVar(value="115200")
         self.serial_connection = None
         self.running = False
+        self.manual_monitoring = False
         self.three_teth_calc = three_teth_model()
-        #self.encoder_one = phidget_encoder(0)
+        self.encoder_one = phidget_encoder(0)
+        self.encoder_two = phidget_encoder(1)
+        self.encoder_three = phidget_encoder(2)
         
         # User inputs
         self.motor_count = tk.StringVar()
@@ -51,10 +54,15 @@ class ThreeTetherGUI:
         self.states = []  # Track the current state for each data point
         self.operation_modes = []  # Track operation mode (automatic/manual)
         self.sent_commands = []  # Track sent commands
+        self.response_times = []
+        self.loadcell_force_one = []
+        self.loadcell_force_two = []
+        self.loadcell_force_three = []
+        self.responses = []  # Store raw responses
         
         # Initialize command vector
         self.command_vec = []
-        self.current_state = 1
+        self.current_state = 3  # Initialize state to 3
         
         # Create the initial connection UI
         self.create_connection_ui()
@@ -221,17 +229,19 @@ class ThreeTetherGUI:
             float(self.tether_two_length.get())
             float(self.tether_three_length.get())
             
-                
             # Switch to operation UI
             self.create_operation_ui()
             
-        except:
+        except ValueError:
             messagebox.showerror("Input Error", "Please ensure all input fields are valid numbers.")
     
     def start_operation(self):
         self.running = True
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
+        
+        # Make sure current_state is set to 3 when starting
+        self.current_state = 3
         
         # Start the operation in a separate thread
         self.operation_thread = threading.Thread(target=self.run_operation)
@@ -240,85 +250,166 @@ class ThreeTetherGUI:
     
     def stop_operation(self):
         self.running = False
+        self.manual_monitoring = False 
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
-    
+        
     def set_state(self, state):
         if self.running:
             self.current_state = state
             self.data_text.insert(tk.END, f"Changed to State {state}\n")
             self.data_text.see(tk.END)
     
+    def get_tether_lengths_and_calculate_apex(self, initial_guess=None):
+        if initial_guess is None and len(self.apex) > 0:
+            initial_guess = self.apex[-1]
+        elif initial_guess is None:
+            initial_guess = [0, 0, -3]
+        
+        # Get tether lengths from encoders
+        tether1_length = float(self.encoder_one.angle2length(self.tether_one_length.get()))
+        tether2_length = float(self.encoder_two.angle2length(self.tether_two_length.get()))
+        tether3_length = float(self.encoder_three.angle2length(self.tether_three_length.get()))
+        
+        # Calculate apex position
+        apex_position = self.three_teth_calc.calculate_apex(
+            tether1_length/12, tether2_length/12, tether3_length/12, initial_guess
+        )
+        
+        # Calculate forces
+        forces = self.three_teth_calc.calculate_tether_forces(apex_position)
+        
+        return tether1_length, tether2_length, tether3_length, apex_position, forces
+        
     def run_operation(self):
         j = 0
         
         while self.running:
-            try:
-                # Determine current operation mode
-                current_mode = "Manual" if self.manual_control.get() else "Automatic"
+            # Check if we're in manual mode
+            if self.manual_control.get():
+                # If switched to manual mode, exit the automatic loop
+                self.root.after(0, lambda: self.update_data_display("Switched to manual mode\n"))
+                break
                 
+            try:
                 # Record timestamps
                 current_utc = datetime.now(timezone.utc)
                 current_microsec = int(time_module.time() * 1000000 - self.start_time_microsec)
+                
+                # Calculate tether lengths and apex
+                initial_guess = self.apex[-1] if j > 0 else [0, 0, -3]
+                tether1_length, tether2_length, tether3_length, apex_position, forces = \
+                    self.get_tether_lengths_and_calculate_apex(initial_guess)
+                
+                # Record data
                 self.time_utc.append(current_utc)
                 self.time_microsec.append(current_microsec)
-                
-                # Record operation mode
-                self.operation_modes.append(current_mode)
-                
-                # Record the last command or empty string if no commands yet
-                latest_command = self.command_vec[-1].strip() if self.command_vec else ""
-                self.sent_commands.append(latest_command)
-
-                if j == 0:
-                    initial_guess = [0, 0, -3]
-                else:
-                    initial_guess = self.apex[-1]
-                
-               
-                #self.encoder_one.get_angle()
-                #tether1_length = self.encoder_one.angle2length(float(self.tether_one_length.get()))
-                tether1_length = float(self.tether_one_length.get())
-                tether2_length = float(self.tether_two_length.get())
-                tether3_length = float(self.tether_three_length.get())
-                
+                self.operation_modes.append("Automatic")
                 self.tether_length_one.append(tether1_length)
                 self.tether_length_two.append(tether2_length)
                 self.tether_length_three.append(tether3_length)
-                
-                # Calculate apex position
-                apex_position = self.three_teth_calc.calculate_apex(tether1_length/12, tether2_length/12, tether3_length/12, initial_guess)
                 self.apex.append(apex_position)
-                
-                # Calculate forces
-                forces = self.three_teth_calc.calculate_tether_forces(apex_position)
                 self.tether_force_one.append(forces[0][0])
                 self.tether_force_two.append(forces[1][0])
                 self.tether_force_three.append(forces[2][0])
                 self.states.append(self.current_state)
-
+                
+                # Format command with all required parameters
+                command = f'{self.current_state},{self.tether_force_one[-1]:.4f},{self.tether_force_two[-1]:.4f},{self.tether_force_three[-1]:.4f}\n'
+                
+                # Send command to microcontroller
+                self.serial_connection.write(command.encode('utf-8'))
+                command_time = time_module.time()
+                
+                # Keep track of sent commands
+                self.command_vec.append(command)
+                self.sent_commands.append(command.strip())
+                
                 # Format the output string with the current state and mode
-                output_text = f"Mode: {current_mode}, State: {self.current_state}, "
+                output_text = f"Mode: Automatic, State: {self.current_state}\n"
                 output_text += f"Lengths: {tether1_length:.4f}, {tether2_length:.4f}, {tether3_length:.4f}\n"
                 output_text += f"Apex: {apex_position}\n"
                 output_text += f"Forces: {forces[0][0]:.4f}, {forces[1][0]:.4f}, {forces[2][0]:.4f}\n"
+                output_text += f"Command: {command.strip()}\n"
                 
-                # Add command info if in manual mode
-                if current_mode == "Manual" and latest_command:
-                    output_text += f"Last Command: {latest_command}\n"
+                # Update the UI with the command output
+                self.root.after(0, lambda t=output_text: self.update_data_display(t))
+                
+                # Wait for response (non-blocking, will immediately process any response)
+                response = None
+                while response is None:
+                    if not self.running or self.manual_control.get():
+                        # Exit loop if stopped or switched to manual mode
+                        return
+                        
+                    if self.serial_connection.in_waiting > 0:
+                        response = self.serial_connection.readline().decode('utf-8').strip()
+                        if response:
+                            self.process_response(response, j)
+                            break
                     
-                output_text += "-" * 50 + "\n"
+                    # Small sleep to prevent CPU hogging
+                    time.sleep(0.001)
                 
-                # Update the UI with the output
-                self.root.after(0, lambda: self.update_data_display(output_text))
-                
-                time.sleep(0.1)  # Same as in the original script
+                # Increment counter
                 j += 1
                 
+                # No delay between iterations - run as fast as possible
+            
             except Exception as e:
                 error_msg = f"Error in operation: {str(e)}\n"
-                self.root.after(0, lambda: self.update_data_display(error_msg))
-                time.sleep(1)
+                self.root.after(0, lambda msg=error_msg: self.update_data_display(msg))
+                time.sleep(1)  # Short delay after an error
+                
+                # Add placeholder data to ensure consistency in data arrays
+                if len(self.operation_modes) > len(self.loadcell_force_one):
+                    self.loadcell_force_one.append(None)
+                    self.loadcell_force_two.append(None)
+                    self.loadcell_force_three.append(None)
+                    self.responses.append("")
+                    self.response_times.append(None)
+    
+    def process_response(self, response, index):
+        try:
+            # Store raw response
+            self.responses.append(response)
+            
+            # Parse the response (expected format: time,loadcell1,loadcell2,loadcell3)
+            parts = response.split(',')
+            
+            if len(parts) >= 4:
+                self.response_times.append(float(parts[0]) if parts[0] else None)
+                self.loadcell_force_one.append(float(parts[1]) if parts[1] else None)
+                self.loadcell_force_two.append(float(parts[2]) if parts[2] else None)
+                self.loadcell_force_three.append(float(parts[3]) if parts[3] else None)
+                
+                # Display response
+                response_text = f"Response: {response}\n"
+                response_text += f"Loadcell forces: {parts[1]}, {parts[2]}, {parts[3]}\n"
+                response_text += "-" * 50 + "\n"
+                self.root.after(0, lambda t=response_text: self.update_data_display(t))
+            else:
+                # Invalid response format
+                self.root.after(0, lambda r=response: self.update_data_display(f"Response: {r}\n"))
+                self.response_times.append(None)
+                self.loadcell_force_one.append(None)
+                self.loadcell_force_two.append(None)
+                self.loadcell_force_three.append(None)
+        
+        except Exception as e:
+            error_msg = f"Error processing response: {str(e)}\n"
+            self.root.after(0, lambda msg=error_msg: self.update_data_display(msg))
+            # Add empty placeholders if parsing fails
+            if len(self.responses) <= index:
+                self.responses.append(response)
+            if len(self.response_times) <= index:
+                self.response_times.append(None)
+            if len(self.loadcell_force_one) <= index:
+                self.loadcell_force_one.append(None)
+            if len(self.loadcell_force_two) <= index:
+                self.loadcell_force_two.append(None)
+            if len(self.loadcell_force_three) <= index:
+                self.loadcell_force_three.append(None)
     
     def update_data_display(self, text):
         self.data_text.insert(tk.END, text)
@@ -338,46 +429,184 @@ class ThreeTetherGUI:
             with open(filepath, 'w', newline='') as csvfile:
                 csvwriter = csv.writer(csvfile)
                 
-                # Write header row with additional columns
+                # Write header row with additional columns for response data
                 csvwriter.writerow([
                     'UTC Time', 'Microseconds Since Start', 
                     'Tether 1 Length', 'Tether 2 Length', 'Tether 3 Length',
                     'X Apex', 'Y Apex', 'Z Apex',
                     'Tether 1 Force', 'Tether 2 Force', 'Tether 3 Force',
-                    'Current State', 'Operation Mode', 'Sent Command'
+                    'Current State', 'Operation Mode', 'Sent Command',
+                    'Response Time', 'Loadcell 1 Force', 'Loadcell 2 Force', 'Loadcell 3 Force', 'Raw Response'
                 ])
                 
                 # Write data rows
                 for i in range(len(self.time_utc)):
-                    # Only proceed if we have all data for this row
-                    if (i < len(self.apex) and i < len(self.tether_force_one)):
-                        command = self.sent_commands[i] if i < len(self.sent_commands) else ""
-                        mode = self.operation_modes[i] if i < len(self.operation_modes) else "Automatic"
-                        
-                        csvwriter.writerow([
-                            self.time_utc[i],
-                            self.time_microsec[i],
-                            self.tether_length_one[i],
-                            self.tether_length_two[i],
-                            self.tether_length_three[i],
-                            self.apex[i][0],  # X coordinate
-                            self.apex[i][1],  # Y coordinate
-                            self.apex[i][2],  # Z coordinate
-                            self.tether_force_one[i],
-                            self.tether_force_two[i],
-                            self.tether_force_three[i],
-                            self.states[i],
-                            mode,
-                            command
-                        ])
+                    # Get values, using None for missing data
+                    command = self.sent_commands[i] if i < len(self.sent_commands) else ""
+                    mode = self.operation_modes[i] if i < len(self.operation_modes) else "Automatic"
+                    apex_x = self.apex[i][0] if i < len(self.apex) else None
+                    apex_y = self.apex[i][1] if i < len(self.apex) else None
+                    apex_z = self.apex[i][2] if i < len(self.apex) else None
+                    response = self.responses[i] if i < len(self.responses) else ""
+                    resp_time = self.response_times[i] if i < len(self.response_times) else None
+                    lc1 = self.loadcell_force_one[i] if i < len(self.loadcell_force_one) else None
+                    lc2 = self.loadcell_force_two[i] if i < len(self.loadcell_force_two) else None
+                    lc3 = self.loadcell_force_three[i] if i < len(self.loadcell_force_three) else None
+                    
+                    csvwriter.writerow([
+                        self.time_utc[i],
+                        self.time_microsec[i],
+                        self.tether_length_one[i] if i < len(self.tether_length_one) else None,
+                        self.tether_length_two[i] if i < len(self.tether_length_two) else None,
+                        self.tether_length_three[i] if i < len(self.tether_length_three) else None,
+                        apex_x,
+                        apex_y,
+                        apex_z,
+                        self.tether_force_one[i] if i < len(self.tether_force_one) else None,
+                        self.tether_force_two[i] if i < len(self.tether_force_two) else None,
+                        self.tether_force_three[i] if i < len(self.tether_force_three) else None,
+                        self.states[i] if i < len(self.states) else None,
+                        mode,
+                        command,
+                        resp_time,
+                        lc1,
+                        lc2, 
+                        lc3,
+                        response
+                    ])
             
             return filepath  # Return the filepath for confirmation message
         except Exception as e:
             return f"Error saving data: {str(e)}"
 
+    def send_manual_command(self):
+        if not self.manual_control.get():
+            messagebox.showinfo("Manual Control", "Please enable manual control first")
+            return
+            
+        command = self.command_entry.get().strip()
+        if not command:
+            messagebox.showinfo("Manual Control", "Please enter a command")
+            return
+            
+        try:
+            # Parse command to get state and forces
+            command_parts = command.split(',')
+            if len(command_parts) >= 4:
+                manual_state = int(command_parts[0])
+                manual_force1 = float(command_parts[1])
+                manual_force2 = float(command_parts[2])
+                manual_force3 = float(command_parts[3])
+            else:
+                self.update_data_display("Error: Command must be in format: state,force1,force2,force3\n")
+                return
+                
+            # Check if serial connection is open
+            if not self.serial_connection or not self.serial_connection.is_open:
+                messagebox.showerror("Connection Error", "Serial connection is not open")
+                return
+                
+            # Add newline character if not present
+            if not command.endswith('\n'):
+                command += '\n'
+                
+            # Record timestamps
+            current_utc = datetime.now(timezone.utc)
+            current_microsec = int(time_module.time() * 1000000 - self.start_time_microsec)
+            
+            # Get tether lengths and calculate apex positions (same as automatic mode)
+            tether1_length, tether2_length, tether3_length, apex_position, _ = \
+                self.get_tether_lengths_and_calculate_apex()
+            
+            # Store data for this manual command
+            self.time_utc.append(current_utc)
+            self.time_microsec.append(current_microsec)
+            self.operation_modes.append("Manual")
+            self.tether_length_one.append(tether1_length)
+            self.tether_length_two.append(tether2_length)
+            self.tether_length_three.append(tether3_length)
+            self.apex.append(apex_position)
+            self.states.append(manual_state)
+            self.tether_force_one.append(manual_force1)
+            self.tether_force_two.append(manual_force2)
+            self.tether_force_three.append(manual_force3)
+            self.sent_commands.append(command.strip())
+                
+            # Send command to microcontroller
+            self.serial_connection.write(command.encode('utf-8'))
+            
+            # Keep track of sent commands
+            self.command_vec.append(command)
+
+            # Display in the UI that the command was sent
+            output_text = f"Manual Command Sent: {command.strip()}\n"
+            output_text += f"Lengths: {tether1_length:.4f}, {tether2_length:.4f}, {tether3_length:.4f}\n"
+            output_text += f"Apex: {apex_position}\n"
+            self.update_data_display(output_text)
+
+            # Start a background thread to continuously monitor for responses
+            # but only if we don't already have one running
+            if not hasattr(self, 'manual_response_thread') or not self.manual_response_thread.is_alive():
+                self.manual_monitoring = True
+                self.manual_response_thread = threading.Thread(target=self.monitor_manual_responses)
+                self.manual_response_thread.daemon = True
+                self.manual_response_thread.start()
+
+            # Clear the command entry
+            self.command_entry.delete(0, tk.END)
+            
+        except Exception as e:
+            error_msg = f"Error in manual command: {str(e)}\n"
+            self.update_data_display(error_msg)
+
+    def monitor_manual_responses(self):
+        response_index = len(self.time_utc) - 1
+        
+        while self.manual_control.get() and self.manual_monitoring:
+            try:
+                if self.serial_connection.in_waiting > 0:
+                    response = self.serial_connection.readline().decode('utf-8').strip()
+                    if response:
+                        # Process the response
+                        # For continuous monitoring, we need to increment the index
+                        response_index += 1
+                        
+                        # Make sure we have data arrays long enough
+                        while len(self.time_utc) <= response_index:
+                            # Duplicate the last entry for timestamps and other data
+                            # with appropriate modifications
+                            current_utc = datetime.now(timezone.utc)
+                            current_microsec = int(time_module.time() * 1000000 - self.start_time_microsec)
+                            
+                            # Add placeholders for the new data point, duplicating most recent values
+                            self.time_utc.append(current_utc)
+                            self.time_microsec.append(current_microsec)
+                            self.operation_modes.append("Manual")
+                            self.tether_length_one.append(self.tether_length_one[-1])
+                            self.tether_length_two.append(self.tether_length_two[-1])
+                            self.tether_length_three.append(self.tether_length_three[-1])
+                            self.apex.append(self.apex[-1])
+                            self.states.append(self.states[-1])
+                            self.tether_force_one.append(self.tether_force_one[-1])
+                            self.tether_force_two.append(self.tether_force_two[-1])
+                            self.tether_force_three.append(self.tether_force_three[-1])
+                            self.sent_commands.append("")  # No new command was sent
+                        
+                        # Process and display the response
+                        self.process_response(response, response_index)
+                
+                # Small sleep to prevent CPU hogging
+                time.sleep(0.001)
+                
+            except Exception as e:
+                error_msg = f"Error monitoring responses: {str(e)}\n"
+                self.root.after(0, lambda msg=error_msg: self.update_data_display(msg))
+                time.sleep(0.1)
+
     def on_closing(self):
         if self.running:
             self.stop_operation()
+        self.manual_monitoring = False
         
         # Ask user if they want to save data
         if len(self.time_utc) > 0:  # Only offer to save if there's data
@@ -398,123 +627,46 @@ class ThreeTetherGUI:
                 
                 # Directory selection
                 ttk.Label(filename_dialog, text="Save location:").grid(row=1, column=0, padx=10, pady=10, sticky="w")
-                dir_var = tk.StringVar(value=os.getcwd())
-                dir_display = ttk.Entry(filename_dialog, textvariable=dir_var, width=30, state="readonly")
-                dir_display.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
-                browse_btn = ttk.Button(filename_dialog, text="Browse...", 
-                                     command=lambda: dir_var.set(filedialog.askdirectory()))
-                browse_btn.grid(row=1, column=2, padx=5, pady=10)
+                directory_var = tk.StringVar(value=os.getcwd())
+                directory_frame = ttk.Frame(filename_dialog)
+                directory_frame.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
+                
+                directory_entry = ttk.Entry(directory_frame, textvariable=directory_var, width=25)
+                directory_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                
+                browse_btn = ttk.Button(directory_frame, text="Browse...", 
+                                        command=lambda: directory_var.set(filedialog.askdirectory()))
+                browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
                 
                 # Save button
-                def save_with_custom_name():
-                    result = self.save_data_to_csv(filename_var.get(), dir_var.get())
+                def save_and_close():
+                    result = self.save_data_to_csv(filename_var.get(), directory_var.get())
+                    messagebox.showinfo("Save Result", f"Data saved to: {result}")
                     filename_dialog.destroy()
-                    if result.startswith("Error"):
-                        messagebox.showerror("Save Error", result)
-                    else:
-                        messagebox.showinfo("Save Successful", f"Data saved to {result}")
-                    self.root.destroy()
+                    
+                save_btn = ttk.Button(filename_dialog, text="Save", command=save_and_close)
+                save_btn.grid(row=2, column=0, columnspan=2, pady=10)
                 
-                save_btn = ttk.Button(filename_dialog, text="Save", command=save_with_custom_name)
-                save_btn.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+                # Configure grid weights
+                filename_dialog.columnconfigure(1, weight=1)
                 
-                # Handle dialog close
-                def on_dialog_close():
-                    filename_dialog.destroy()
-                    self.root.destroy()
-                
-                filename_dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
-                
-                # Wait for this dialog to be processed
-                return
+                # Wait for dialog to close
+                self.root.wait_window(filename_dialog)
         
+        # Close serial connection if open
         if self.serial_connection and self.serial_connection.is_open:
             self.serial_connection.close()
         
+        # Close encoders
+        self.encoder_one.close()
+        self.encoder_two.close()
+        self.encoder_three.close()
+        
         self.root.destroy()
-
-    def monitor_serial_response(self, original_command):
-        response = ""
-        start_time = time.time()
-        last_display_time = 0
-        display_interval = 0.002  # 2 milliseconds
-        
-        # Keep checking for responses until a new command is sent or timeout occurs
-        while (len(self.command_vec) > 0 and 
-              self.command_vec[-1] == original_command):  # 30 second timeout
-            
-            try:
-                current_time = time.time()
-                
-                # Read all available data from the buffer
-                while self.serial_connection.in_waiting > 0:
-                    incoming = self.serial_connection.readline().decode('utf-8').strip()
-                    if incoming:
-                        response = incoming
-                        
-                        # Only display if enough time has passed since last display
-                        if current_time - last_display_time >= display_interval:
-                            # Use after method to safely update UI from a background thread
-                            self.root.after(0, lambda r=response: self.update_data_display(f"Response: {r}\n"))
-                            last_display_time = current_time
-                
-                # Small delay to prevent CPU hogging
-                time.sleep(0.001)  # 1ms sleep to check more frequently
-                
-            except Exception as e:
-                self.root.after(0, lambda: self.update_data_display(f"Error reading response: {str(e)}\n"))
-                break
-        
-        # Add a separator when finished
-        self.root.after(0, lambda: self.update_data_display("-" * 50 + "\n"))
-
-    def send_manual_command(self):
-        if not self.manual_control.get():
-            messagebox.showinfo("Manual Control", "Please enable manual control first")
-            return
-            
-        command = self.command_entry.get().strip()
-        if not command:
-            messagebox.showinfo("Manual Control", "Please enter a command")
-            return
-            
-        try:
-            # Check if serial connection is open
-            if not self.serial_connection or not self.serial_connection.is_open:
-                messagebox.showerror("Connection Error", "Serial connection is not open")
-                return
-                
-            # Add newline character if not present (often needed for Arduino/microcontroller communication)
-            if not command.endswith('\n'):
-                command += '\n'
-                
-            # Send command to microcontroller
-            self.serial_connection.write(command.encode('utf-8'))
-            
-            # Keep track of sent commands
-            self.command_vec.append(command)
-
-            # Display in the UI that the command was sent
-            output_text = f"Manual Command Sent: {command.strip()}\n"
-            self.update_data_display(output_text)
-
-            # Set up a monitoring thread to continuously check for responses
-            self.monitor_thread = threading.Thread(
-                target=self.monitor_serial_response,
-                args=(command,)
-            )
-            self.monitor_thread.daemon = True
-            self.monitor_thread.start()
-
-            # Clear the command entry
-            self.command_entry.delete(0, tk.END)
-            
-        except Exception as e:
-            error_msg = f"Error in serial communication: {str(e)}\n"
-            self.update_data_display(error_msg)
+        sys.exit(0)
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = ThreeTetherGUI(root)
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)  # Handle window close button
     root.mainloop()
