@@ -1,12 +1,10 @@
 // TODO: when hitting errors and returning tp base state, the chracter array input[0] has to be changed or else the jump will not be acknowledged,
-//  potentially change this to allow the int input1 to be changed and not be overwritten by input array (or not, might be for the better)
-
-// TODO: motor 1 inverted (marked with x physically)
+//        potentially change this to allow the int input1 to be changed and not be overwritten by input array (or not, might be for the better)
 // TODO: input a state should not be necessary to check, since we are torquing in one direction will only need one direction and not allow torque commands in the other direction.
+// TODO: create load cell taring routine in setup script, read load cell for x amount of time, take that average, and that is the offset
 
-// TODO: verify that adc readings are feeding correctly and motors are being commanded correctly
-// TODO: clean up global and local variables, it's a mess
 
+// TODO: control law and load cell bounds check has not been checked
 
 /*
  * Objective:
@@ -42,6 +40,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
+#include <RunningAverage.h> 
 // weird shit going on with class between preprocessor min/max macros and std min/max (undefine both of them)
 #ifdef min
 #undef min
@@ -54,7 +53,7 @@
 
 // The INPUT_A_FILTER must match the Input A filter setting in
 // MSP (Advanced >> Input A, B Filtering...)
-#define INPUT_A_FILTER 20
+#define INPUT_A_FILTER 2
 
 // Defines the motor connectors
 #define ioPort ConnectorUsb
@@ -69,14 +68,23 @@
 // load cell parameters
 #define adcResolution 12
 #define LOAD_CELL_MAX_FORCE 220.462 // lbs
+double max_allowable_force = 50; // lbs, cutoff before absolute max load cell force
 const int analogPins[3] = {A10, A11, A12};
 // empirically determined linear scale factor of the load cell
-double scale_factor[3] = {1.1316, 1.1316, 1.1316};
+// double scale_factor[3] = {1.1316, 1.1316, 1.1316};
+double scale_factor[3] = {0.977662904235, 0.974399048854, 0.975303160436};
 // this offset is from the load cell hanging vertically 
-double offset[3] = {1.4, 1.4, 1.4};
+// double offset[3] = {1.4, 1.4, 1.4};
+double offset[3] = {1.5, 3.3, 1.34};
 double load_cell[3] = {0, 0, 0};
 
-
+// control parameters
+double kp[3] = {2.0, 2.0, 2.0};
+double kd[3] = {0.0, 0.0, 0.0};
+double F_err_prev[3] = {0.0, 0.0, 0.0};
+// maybe make this array?
+unsigned long prev_time[3] = {0.0, 0.0, 0.0};
+std::vector<float> torque_command(3);
 
 // define number of motors being used
 int num_motors = 0;
@@ -101,14 +109,16 @@ bool test_start = false;
 bool ramp_done = false;
 
 // Declares helper functions
-void ramp_up_motor(const std::vector<float>& commandedTorque);
+void ramp_up_motor();
 double force2Torque(double force);
 void readLoadCell();
 void getNumMotors();
 void multipleMotorEnable(bool request);
-void checkMotorAState(const std::vector<float>& commandedTorque);
-bool CommandTorque(int commandedTorque);
+void checkMotorAState();
+bool CommandTorque();
 
+// moving average object
+RunningAverage* ra[3]; 
 
 void setup() {
     // Put your setup code here, it will only run once:
@@ -136,6 +146,11 @@ void setup() {
 
     // set input1 to state 1
     input[0] = '1';
+
+    // begin rolling average
+    for (int i = 0; i < 3; i++) {
+      ra[i] = new RunningAverage(10); // Set the sample size for each object
+    }
 
     // set up motors to start loop disabled
     multipleMotorEnable(false);
@@ -186,16 +201,40 @@ void loop() {
 
     // save off state to input 1
     input1 = float_inputs[0];
-    // convert force inputs into motor command (% of max torque)
-    std::vector<float> currCommand(3);
-    for(int i = 0; i<3; i++){
-      // currCommand[i] = force2Torque(float_inputs[i+1]);
-      currCommand[i] = 5.0;
-    }
 
     // read the load cells
     readLoadCell();
-    Serial.println(String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+    // debugging message
+    // Serial.println(String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+    
+
+    // convert force inputs into motor command (% of max torque) and apply PD control
+    double F_err_dot = 0;
+    double Tau_m_adj = 0;
+    double F_err = 0;
+    double dt = 0;
+    for(int i = 0; i<num_motors; i++){
+      // define holding torque
+      torque_command[i] = force2Torque(float_inputs[i+1]);
+
+      // add control torque to holding torque command
+      if(ramp_done){
+        F_err = float_inputs[i+1]-load_cell[i];
+        dt = (millis() - prev_time[i])/1000.0; // dt in seconds for derivative gain
+        F_err_dot = (F_err-F_err_prev[i])/dt;
+        Tau_m_adj = kp[i]*F_err + kd[i]*F_err_dot;
+        // Serial.println(String(force2Torque(Tau_m_adj)));
+        torque_command[i] = torque_command[i] + force2Torque(Tau_m_adj);
+      }
+
+      // update F_err_prev and prev time
+      F_err_prev[i] = F_err;
+      prev_time[i] = millis();
+    }
+
+    // Serial.println("Torque command: " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
+
+
 
 
     switch(input1){
@@ -225,13 +264,12 @@ void loop() {
           }
 
           if(!ramp_done){
-            ramp_up_motor(currCommand);
+            ramp_up_motor();
             ramp_done = true;
           }
           else{
-            CommandTorque(currCommand);    // See below for the detailed function definition.
+            CommandTorque();    // See below for the detailed function definition.
           }
-          // Wait 2000ms.
 
           break;
         }
@@ -251,11 +289,12 @@ void loop() {
             test_start = true;
           }
 
-          CommandTorque(currCommand);    // See below for the detailed function definition.
+          CommandTorque();    // See below for the detailed function definition.
           // prints load cell outputs, depends on numbers of motors connected
           switch (num_motors){
             case 1:
-              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + "\n");
+              // Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + "\n");
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(torque_command[0]) + "\n");
               break;
             case 2:
               Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + "\n");
@@ -264,7 +303,6 @@ void loop() {
               Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
               break;
           }
-          delay(200);
 
           break;
         }
@@ -277,25 +315,33 @@ void loop() {
     }
 
     // TODO: temporary delay
-    delay(200);
+    delay(1);
 }
 
 // slowly ramp up the motor to the desired force whenever the state goes from 1 to 2, assumes motors are already enabled
-void ramp_up_motor(const std::vector<float>& commandedTorque){
+void ramp_up_motor(){
   // time to ramp up to commanded torque
-  double ramp_time = 15.0;
+  double ramp_time = 10.0;
   // number of increments to take with torque
   double increments = 100.0;
   // time to delay each loop during ramp up
   unsigned long delay_time = 1000.0*(ramp_time/increments);
-  std::vector<float> ramped_torque(3);
+  std::vector<float> end_torque(3);
+
+  end_torque = torque_command;
 
   Serial.print("Motors ramping\n");
   for (double i = 0.0; i<increments; i++){
     for (int j = 0; j<3; j++){
-      ramped_torque[j] = (i/100.0)*commandedTorque[j];
+      torque_command[j] = (i/100.0)*end_torque[j];
     }
-    CommandTorque(ramped_torque);
+    CommandTorque();
+
+    // if overspeed during ramp, break and return
+    if (input[0] == '1'){
+      Serial.print("Motor ramp failed\n");
+      return;
+    }
     // delay 300 ms corresponds to 30 seconds ramp up time
     delay(delay_time);
   }
@@ -306,7 +352,8 @@ void ramp_up_motor(const std::vector<float>& commandedTorque){
 double force2Torque(double force){
   // 94.48 (N/Nm)
   // 21.241 (lbf/Nm)
-  double torque = (1.0/21.241)*force;
+  // todo: 1.25 tmeporary scale factor
+  double torque = 1.25*((1.0/21.241)*force);
   return (torque/maxTorqueMag*100);
 }
 
@@ -317,8 +364,16 @@ void readLoadCell(){
   for (int i = 0; i<3; i++){
     adcResult = analogRead(analogPins[i]);
     inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
-    force = scale_factor[i]*((inputVoltage/10)*LOAD_CELL_MAX_FORCE - offset[i]);
-    load_cell[i] = force;
+    force = scale_factor[i]*((inputVoltage/10)*LOAD_CELL_MAX_FORCE) - offset[i];
+    ra[i]->addValue(force);   
+    load_cell[i] = ra[i]->getAverage();
+
+    // disable motors if load cell over 175 lbs
+    if (load_cell[i] > max_allowable_force){
+      Serial.print("excessive load cell force detected\n");
+      input[0] = '1';
+      return;
+    }
     // load_cell[i] = inputVoltage;
     // load_cell[i] = adcResult;
   }
@@ -380,27 +435,27 @@ void multipleMotorEnable(bool request){
 }
 
 // toggle direction (A state) depending on num motors
-void checkMotorAState(const std::vector<float>& commandedTorque){
+void checkMotorAState(){
   switch (num_motors){
     case 1:
-      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      if (torque_command[0] < 0) {motor1.MotorInAState(true);}
       else {motor1.MotorInAState(false);}
       break;
     case 2:
-      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      if (torque_command[0] < 0) {motor1.MotorInAState(true);}
       else {motor1.MotorInAState(false);}
 
-      if (commandedTorque[1] < 0) {motor2.MotorInAState(true);}
+      if (torque_command[1] < 0) {motor2.MotorInAState(true);}
       else {motor2.MotorInAState(false);}
       break;
     case 3:
-      if (commandedTorque[0] < 0) {motor1.MotorInAState(true);}
+      if (torque_command[0] < 0) {motor1.MotorInAState(true);}
       else {motor1.MotorInAState(false);}
 
-      if (commandedTorque[1] < 0) {motor2.MotorInAState(true);}
+      if (torque_command[1] < 0) {motor2.MotorInAState(true);}
       else {motor2.MotorInAState(false);}
 
-      if (commandedTorque[2] < 0) {motor3.MotorInAState(true);}
+      if (torque_command[2] < 0) {motor3.MotorInAState(true);}
       else {motor3.MotorInAState(false);}
       break;
     default:
@@ -412,9 +467,9 @@ void checkMotorAState(const std::vector<float>& commandedTorque){
 /*------------------------------------------------------------------------------
  * CommandTorque commands set of up to three motors given vector of torque commands
  */
-bool CommandTorque(const std::vector<float>& commandedTorque) {
-    for (int i = 0; i < (commandedTorque.size()-1); i++){
-      if (abs(commandedTorque[i]) > abs(maxTorque)) {
+bool CommandTorque() {
+    for (int i = 0; i < (torque_command.size()-1); i++){
+      if (abs(torque_command[i]) > abs(maxTorque)) {
           Serial.println("Move rejected, invalid torque requested");
           return false;
       }
@@ -426,10 +481,10 @@ bool CommandTorque(const std::vector<float>& commandedTorque) {
 
     // Scale the torque command to our duty cycle range.
     std::vector<float> dutyRequest(3);
-    dutyRequest = {abs(commandedTorque[0])*scaleFactor, abs(commandedTorque[1])*scaleFactor, abs(commandedTorque[2])*scaleFactor};
+    dutyRequest = {abs(torque_command[0])*scaleFactor, abs(torque_command[1])*scaleFactor, abs(torque_command[2])*scaleFactor};
 
     // Set input A to match the direction of torque.
-    checkMotorAState(commandedTorque);
+    checkMotorAState();
 
     // Ensures this delay is at least 20ms longer than the Input A filter
     // setting in MSP

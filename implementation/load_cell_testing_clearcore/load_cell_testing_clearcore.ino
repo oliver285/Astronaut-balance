@@ -13,10 +13,9 @@
 
 // pounds
 #define LOAD_CELL_MAX_FORCE 220.462
-#define scale_factor 1.1316
 
 // moving average object
-RunningAverage avgWeight(50);   
+RunningAverage avgWeight(2000);   
 
 void setup() {
     // Put your setup code here, it will only run once:
@@ -43,19 +42,27 @@ void setup() {
 void loop() {
     // Put your main code here, it will run repeatedly:
 
-    // Read the analog input (A-9 through A-12 may be configured as analog
-    // inputs).
-    // TODO: not reading correctly when ground hooked into A12, only A12-A11
-    int adcResult1 = analogRead(A12);
-    int adcResult2 = analogRead(A11);
-    int adcResult = adcResult1 - adcResult2;
+    // A10, A11, or A12
+    int adcResult = analogRead(A10);
     // Convert the reading to a voltage.
     double inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
     
-    double tare = 1.4;
+    // load cell 1
+    double offset = 1.5;
+    double scale_factor = 0.977662904235;
+    // 0.98837964
+
+    // load cell 2
+    // double offset = 3.3;
+    // double scale_factor = 0.974399048854;
+
+    // load cell 3
+    // double offset = 1.34;
+    // double scale_factor = 0.975303160436;
+// 0.9817549956559514
+
     // TODO: offset and scale factor
-    double meas_load_cell_force = (inputVoltage/10)*LOAD_CELL_MAX_FORCE - tare;
-    float corrected_force = meas_load_cell_force*scale_factor;
+    double corrected_force = scale_factor*((inputVoltage/10)*LOAD_CELL_MAX_FORCE) - offset;
     avgWeight.addValue(corrected_force);
     float avg = avgWeight.getAverage();
     // Display the voltage reading to the USB serial port.
