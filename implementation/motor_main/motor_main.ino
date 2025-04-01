@@ -4,7 +4,8 @@
 // TODO: create load cell taring routine in setup script, read load cell for x amount of time, take that average, and that is the offset
 
 
-// TODO: control law and load cell bounds check has not been checked
+// TODO: tune gains
+// TODO: add negative torque protection
 
 /*
  * Objective:
@@ -68,7 +69,7 @@
 // load cell parameters
 #define adcResolution 12
 #define LOAD_CELL_MAX_FORCE 220.462 // lbs
-double max_allowable_force = 50; // lbs, cutoff before absolute max load cell force
+double max_allowable_force = 100; // lbs, cutoff before absolute max load cell force
 const int analogPins[3] = {A10, A11, A12};
 // empirically determined linear scale factor of the load cell
 // double scale_factor[3] = {1.1316, 1.1316, 1.1316};
@@ -80,7 +81,9 @@ double load_cell[3] = {0, 0, 0};
 
 // control parameters
 double kp[3] = {2.0, 2.0, 2.0};
-double kd[3] = {0.0, 0.0, 0.0};
+double kd[3] = {0.01, 0.01, 0.01};
+// double kp[3] = {0.0, 0.0, 0.0};
+// double kd[3] = {0.0, 0.0, 0.0};
 double F_err_prev[3] = {0.0, 0.0, 0.0};
 // maybe make this array?
 unsigned long prev_time[3] = {0.0, 0.0, 0.0};
