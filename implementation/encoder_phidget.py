@@ -12,7 +12,6 @@ class phidget_encoder:
         self.angle = 0.0
         self.length = 0.0
         self.init_l = 0.0
-        self.init_length()
         # self.spool_width = 1.0  # inches
         # self.angle2length_factor = 1  # inches/degree
 
@@ -30,9 +29,15 @@ class phidget_encoder:
         self.angle = self.position_to_degrees(position)
         return self.angle
 
-    def angle2length(self):
-        self.length = self.init_l + (self.angle/360)*(2*np.pi*self.spool_radius)
+    def angle2length(self, initial_length):
+        self.angle = self.get_angle()
+        self.length = initial_length + (self.angle/360)*(2*np.pi*self.spool_radius)
         return self.length
+
+
+    # close encoder instance
+    def close_encoder(self):
+        self.encoder.close()
 
 
     # close encoder instance
