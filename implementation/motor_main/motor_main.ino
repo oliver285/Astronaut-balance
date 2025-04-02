@@ -241,6 +241,9 @@ void loop() {
 
 
     switch(input1){
+      case 0:
+        // reboot the system
+        NVIC_SystemReset(); 
       case 1:
         {
           test_start = false;
