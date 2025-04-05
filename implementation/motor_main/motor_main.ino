@@ -69,7 +69,7 @@
 // load cell parameters
 #define adcResolution 12
 #define LOAD_CELL_MAX_FORCE 220.462 // lbs
-double max_allowable_force = 100; // lbs, cutoff before absolute max load cell force
+double max_allowable_force = 50; // lbs, cutoff before absolute max load cell force
 const int analogPins[3] = {A10, A11, A12};
 // empirically determined linear scale factor of the load cell
 // double scale_factor[3] = {1.1316, 1.1316, 1.1316};
@@ -306,7 +306,9 @@ void loop() {
               Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + "\n");
               break;
             case 3:
-              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+              // Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+              Serial.println(String(millis() - t_init, 4) + ", " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
+              // Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + ", " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) +"\n");
               break;
           }
 
@@ -442,33 +444,34 @@ void multipleMotorEnable(bool request){
 
 // toggle direction (A state) depending on num motors
 void checkMotorAState(){
+  for(int i = 0; i<3; i++){
+    if (torque_command[i] < 0){
+      torque_command[i] = 0;
+    }
+  }
+
   switch (num_motors){
     case 1:
-      if (torque_command[0] < 0) {motor1.MotorInAState(true);}
-      else {motor1.MotorInAState(false);}
+      motor1.MotorInAState(false);
       break;
     case 2:
-      if (torque_command[0] < 0) {motor1.MotorInAState(true);}
-      else {motor1.MotorInAState(false);}
-
-      if (torque_command[1] < 0) {motor2.MotorInAState(true);}
-      else {motor2.MotorInAState(false);}
+      motor1.MotorInAState(false);
+      motor2.MotorInAState(false);
       break;
     case 3:
-      if (torque_command[0] < 0) {motor1.MotorInAState(true);}
-      else {motor1.MotorInAState(false);}
-
-      if (torque_command[1] < 0) {motor2.MotorInAState(true);}
-      else {motor2.MotorInAState(false);}
-
-      if (torque_command[2] < 0) {motor3.MotorInAState(true);}
-      else {motor3.MotorInAState(false);}
+      motor1.MotorInAState(false);
+      motor2.MotorInAState(false);
+      // motor 3 always opposite direction due to physical orientation
+      motor3.MotorInAState(true);
       break;
     default:
       Serial.print("incompatible number of motors\n");
       break;
   }
 }
+
+
+
 
 /*------------------------------------------------------------------------------
  * CommandTorque commands set of up to three motors given vector of torque commands
