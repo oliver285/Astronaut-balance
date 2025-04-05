@@ -22,7 +22,6 @@ plt.title('Tether Lengths Over Time')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.show()
 
 # Example 2: Tether Forces
 plt.figure(figsize=(10, 6))
@@ -35,7 +34,7 @@ plt.title('Tether Forces Over Time')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.show()
+
 
 # Example 3: Apex Position (X, Y, Z)
 plt.figure(figsize=(10, 6))
@@ -48,7 +47,7 @@ plt.title('Apex Position Over Time')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.show()
+
 
 
 # Example 4: Force Error (X, Y, Z)
@@ -60,7 +59,6 @@ plt.title('Force Error (lbf)')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.show()
 
 
 
