@@ -41,7 +41,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
-#include <RunningAverage.h> 
+#include <SimpleKalmanFilter.h>
 // weird shit going on with class between preprocessor min/max macros and std min/max (undefine both of them)
 #ifdef min
 #undef min
@@ -80,13 +80,16 @@ double offset[3] = {1.5, 3.3, 1.34};
 double load_cell[3] = {0, 0, 0};
 
 // control parameters
-double kp[3] = {2.0, 2.0, 2.0};
-double kd[3] = {0.01, 0.01, 0.01};
+double kp[3] = {1.5, 1.5, 1.5};
+double ki[3] = {0.2, 0.2, 0.2};
+double kd[3] = {0.2, 0.2, 0.2};
 // double kp[3] = {0.0, 0.0, 0.0};
+// double ki[3] = {0.0, 0.0, 0.0};
 // double kd[3] = {0.0, 0.0, 0.0};
 double F_err_prev[3] = {0.0, 0.0, 0.0};
 // maybe make this array?
 unsigned long prev_time[3] = {0.0, 0.0, 0.0};
+double integral[3] = {0.0, 0.0, 0.0};
 std::vector<float> torque_command(3);
 
 // define number of motors being used
@@ -113,6 +116,7 @@ bool ramp_done = false;
 
 // Declares helper functions
 void ramp_up_motor();
+// void ramp_up_motor(const std::vector<float>& inputs);
 double force2Torque(double force);
 void readLoadCell();
 void getNumMotors();
@@ -121,7 +125,11 @@ void checkMotorAState();
 bool CommandTorque();
 
 // moving average object
-RunningAverage* ra[3]; 
+SimpleKalmanFilter kalmanFilters[3] = {
+  SimpleKalmanFilter(0.5, 0.5, 0.01), // for analogInput[0]
+  SimpleKalmanFilter(0.5, 0.5, 0.01), // for analogInput[1]
+  SimpleKalmanFilter(0.5, 0.5, 0.01)  // for analogInput[2]
+};
 
 void setup() {
     // Put your setup code here, it will only run once:
@@ -149,11 +157,6 @@ void setup() {
 
     // set input1 to state 1
     input[0] = '1';
-
-    // begin rolling average
-    for (int i = 0; i < 3; i++) {
-      ra[i] = new RunningAverage(10); // Set the sample size for each object
-    }
 
     // set up motors to start loop disabled
     multipleMotorEnable(false);
@@ -225,7 +228,15 @@ void loop() {
         F_err = float_inputs[i+1]-load_cell[i];
         dt = (millis() - prev_time[i])/1000.0; // dt in seconds for derivative gain
         F_err_dot = (F_err-F_err_prev[i])/dt;
-        Tau_m_adj = kp[i]*F_err + kd[i]*F_err_dot;
+        // TODO: currently only in klaman version, not ra
+        if (abs(F_err) < 0.25){
+          integral[i] = 0;
+        }
+        else{
+          integral[i] += F_err*dt;
+        }
+        Serial.println(String(integral[i]));
+        Tau_m_adj = kp[i]*F_err + ki[i]*integral[i] + kd[i]*F_err_dot;
         // Serial.println(String(force2Torque(Tau_m_adj)));
         torque_command[i] = torque_command[i] + force2Torque(Tau_m_adj);
       }
@@ -235,6 +246,7 @@ void loop() {
       prev_time[i] = millis();
     }
 
+    Serial.print("\n");
     // Serial.println("Torque command: " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
 
 
@@ -270,7 +282,8 @@ void loop() {
           }
 
           if(!ramp_done){
-            ramp_up_motor();
+            // ramp_up_motor();
+            ramp_up_motor(float_inputs);
             ramp_done = true;
           }
           else{
@@ -306,8 +319,8 @@ void loop() {
               Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + "\n");
               break;
             case 3:
-              // Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
-              Serial.println(String(millis() - t_init, 4) + ", " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
+              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+              // Serial.println(String(millis() - t_init, 4) + ", " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
               // Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + ", " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) +"\n");
               break;
           }
@@ -327,34 +340,40 @@ void loop() {
 }
 
 // slowly ramp up the motor to the desired force whenever the state goes from 1 to 2, assumes motors are already enabled
-void ramp_up_motor(){
-  // time to ramp up to commanded torque
-  double ramp_time = 10.0;
-  // number of increments to take with torque
-  double increments = 100.0;
-  // time to delay each loop during ramp up
-  unsigned long delay_time = 1000.0*(ramp_time/increments);
-  std::vector<float> end_torque(3);
-
-  end_torque = torque_command;
-
+void ramp_up_motor(const std::vector<float>& inputs){
+  
+  torque_command = {0.0, 0.0, 0.0};
   Serial.print("Motors ramping\n");
-  for (double i = 0.0; i<increments; i++){
-    for (int j = 0; j<3; j++){
-      torque_command[j] = (i/100.0)*end_torque[j];
-    }
-    CommandTorque();
 
-    // if overspeed during ramp, break and return
+  bool ramped[3] = {false,false,false};
+  
+  while(!ramped[0] || !ramped[1] || !ramped[2]){
+    readLoadCell();
+    for(int i=0; i<3; i++){
+      if (abs(load_cell[i]  - inputs[i+1]) < 5.0){
+        ramped[i] = true;
+      }
+      else{
+        if (load_cell[i] < inputs[i+1]){
+          torque_command[i] += 1.0;
+        }
+        else{
+          torque_command[i] -= 1.0;
+        }
+        CommandTorque();
+      }  
+    }
+
     if (input[0] == '1'){
       Serial.print("Motor ramp failed\n");
       return;
     }
-    // delay 300 ms corresponds to 30 seconds ramp up time
-    delay(delay_time);
+    delay(200);
   }
+  
   Serial.print("Motors ramped to commanded torque\n");
 }
+
 
 // input force returns torque command as percentage of max torque
 double force2Torque(double force){
@@ -373,8 +392,7 @@ void readLoadCell(){
     adcResult = analogRead(analogPins[i]);
     inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
     force = scale_factor[i]*((inputVoltage/10)*LOAD_CELL_MAX_FORCE) - offset[i];
-    ra[i]->addValue(force);   
-    load_cell[i] = ra[i]->getAverage();
+    load_cell[i] = kalmanFilters[i].updateEstimate(force);
 
     // disable motors if load cell over 175 lbs
     if (load_cell[i] > max_allowable_force){
@@ -462,7 +480,7 @@ void checkMotorAState(){
       motor1.MotorInAState(false);
       motor2.MotorInAState(false);
       // motor 3 always opposite direction due to physical orientation
-      motor3.MotorInAState(true);
+      motor3.MotorInAState(false);
       break;
     default:
       Serial.print("incompatible number of motors\n");
