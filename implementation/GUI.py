@@ -30,6 +30,7 @@ class ThreeTetherGUI:
         self.encoder_one = phidget_encoder(1)
         self.encoder_two = phidget_encoder(2)
         self.encoder_three = phidget_encoder(0)
+        self.initialization_message = ""
         
         # User inputs
         self.motor_count = tk.StringVar()
@@ -48,32 +49,15 @@ class ThreeTetherGUI:
         # Tether lengths initialized flag
         self.tether_lengths_initialized = False
         
-        # Data storage
-        self.time_utc = []
-        # Removed time_microsec and start_time_microsec
-        self.tether_length_one = []
-        self.tether_length_two = []
-        self.tether_length_three = []
-        self.apex = []
-        self.tether_force_one = []
-        self.tether_force_two = []
-        self.tether_force_three = []
-        self.states = []  # Track the current state for each data point
-        self.operation_modes = []  # Track operation mode (automatic/manual)
-        self.sent_commands = []  # Track sent commands
-        self.response_times = []
-        self.loadcell_force_one = []
-        self.loadcell_force_two = []
-        self.loadcell_force_three = []
-        self.responses = []  # Store raw responses
-        self.tether_initialized_status = []
-        self.force_error = []
-        self.angular_error = []
+        # Initialize data arrays with zero length
+        self.data_length = 0
+        self.max_data_length = 5000  # Initial allocation size
+        self.initialize_data_arrays()
         
         # Initialize command vector
         self.command_vec = []
-        self.current_state = 3  # Initialize state to 3
-        self.manual_state = 3  # Default state
+        self.current_state = 4 # Initialize state to 3
+        self.manual_state = 4  # Default state
         self.manual_force1 = 0.0
         self.manual_force2 = 0.0
         self.manual_force3 = 0.0
@@ -81,6 +65,193 @@ class ThreeTetherGUI:
         
         # Create the initial connection UI
         self.create_connection_ui()
+    
+    def initialize_data_arrays(self):
+        """Initialize empty NumPy arrays with pre-allocated space"""
+        # Data that will be stored as objects (mixed types or strings)
+        self.time_utc = np.array([], dtype='object')
+        self.sent_commands = np.array([], dtype='object')
+        self.operation_modes = np.array([], dtype='object')
+        self.responses = np.array([], dtype='object')
+        
+        # Numeric data arrays (using float32 to save memory)
+        self.tether_length_one = np.zeros(self.max_data_length, dtype=np.float32)
+        self.tether_length_two = np.zeros(self.max_data_length, dtype=np.float32)
+        self.tether_length_three = np.zeros(self.max_data_length, dtype=np.float32)
+        self.tether_force_one = np.zeros(self.max_data_length, dtype=np.float32)
+        self.tether_force_two = np.zeros(self.max_data_length, dtype=np.float32)
+        self.tether_force_three = np.zeros(self.max_data_length, dtype=np.float32)
+        self.loadcell_force_one = np.zeros(self.max_data_length, dtype=np.float32)
+        self.loadcell_force_two = np.zeros(self.max_data_length, dtype=np.float32)
+        self.loadcell_force_three = np.zeros(self.max_data_length, dtype=np.float32)
+        self.response_times = np.zeros(self.max_data_length, dtype=np.float32)
+        self.force_error = np.zeros(self.max_data_length, dtype=np.float32)
+        self.angular_error = np.zeros(self.max_data_length, dtype=np.float32)
+        
+        # Integer data
+        self.states = np.zeros(self.max_data_length, dtype=np.int32)
+        
+        # Boolean data
+        self.tether_initialized_status = np.zeros(self.max_data_length, dtype=np.bool_)
+        
+        # Special handling for apex positions (3D coordinates)
+        self.apex = np.zeros((self.max_data_length, 3), dtype=np.float32)
+        
+        # Set initial NaN values for numeric data to indicate missing values
+        self.tether_length_one.fill(np.nan)
+        self.tether_length_two.fill(np.nan)
+        self.tether_length_three.fill(np.nan)
+        self.tether_force_one.fill(np.nan)
+        self.tether_force_two.fill(np.nan)
+        self.tether_force_three.fill(np.nan)
+        self.loadcell_force_one.fill(np.nan)
+        self.loadcell_force_two.fill(np.nan)
+        self.loadcell_force_three.fill(np.nan)
+        self.response_times.fill(np.nan)
+        self.force_error.fill(np.nan)
+        self.angular_error.fill(np.nan)
+        self.apex.fill(np.nan)
+    
+    def expand_arrays_if_needed(self):
+        """Check if arrays need expansion and double their size if needed"""
+        if self.data_length >= self.max_data_length - 1:
+            # Double the array sizes
+            new_max_length = self.max_data_length * 2
+            
+            # Create new arrays and copy data
+            new_tether_length_one = np.zeros(new_max_length, dtype=np.float32)
+            new_tether_length_one[:self.max_data_length] = self.tether_length_one
+            new_tether_length_one[self.max_data_length:].fill(np.nan)
+            self.tether_length_one = new_tether_length_one
+            
+            new_tether_length_two = np.zeros(new_max_length, dtype=np.float32)
+            new_tether_length_two[:self.max_data_length] = self.tether_length_two
+            new_tether_length_two[self.max_data_length:].fill(np.nan)
+            self.tether_length_two = new_tether_length_two
+            
+            new_tether_length_three = np.zeros(new_max_length, dtype=np.float32)
+            new_tether_length_three[:self.max_data_length] = self.tether_length_three
+            new_tether_length_three[self.max_data_length:].fill(np.nan)
+            self.tether_length_three = new_tether_length_three
+            
+            new_tether_force_one = np.zeros(new_max_length, dtype=np.float32)
+            new_tether_force_one[:self.max_data_length] = self.tether_force_one
+            new_tether_force_one[self.max_data_length:].fill(np.nan)
+            self.tether_force_one = new_tether_force_one
+            
+            new_tether_force_two = np.zeros(new_max_length, dtype=np.float32)
+            new_tether_force_two[:self.max_data_length] = self.tether_force_two
+            new_tether_force_two[self.max_data_length:].fill(np.nan)
+            self.tether_force_two = new_tether_force_two
+            
+            new_tether_force_three = np.zeros(new_max_length, dtype=np.float32)
+            new_tether_force_three[:self.max_data_length] = self.tether_force_three
+            new_tether_force_three[self.max_data_length:].fill(np.nan)
+            self.tether_force_three = new_tether_force_three
+            
+            new_loadcell_force_one = np.zeros(new_max_length, dtype=np.float32)
+            new_loadcell_force_one[:self.max_data_length] = self.loadcell_force_one
+            new_loadcell_force_one[self.max_data_length:].fill(np.nan)
+            self.loadcell_force_one = new_loadcell_force_one
+            
+            new_loadcell_force_two = np.zeros(new_max_length, dtype=np.float32)
+            new_loadcell_force_two[:self.max_data_length] = self.loadcell_force_two
+            new_loadcell_force_two[self.max_data_length:].fill(np.nan)
+            self.loadcell_force_two = new_loadcell_force_two
+            
+            new_loadcell_force_three = np.zeros(new_max_length, dtype=np.float32)
+            new_loadcell_force_three[:self.max_data_length] = self.loadcell_force_three
+            new_loadcell_force_three[self.max_data_length:].fill(np.nan)
+            self.loadcell_force_three = new_loadcell_force_three
+            
+            new_response_times = np.zeros(new_max_length, dtype=np.float32)
+            new_response_times[:self.max_data_length] = self.response_times
+            new_response_times[self.max_data_length:].fill(np.nan)
+            self.response_times = new_response_times
+            
+            new_force_error = np.zeros(new_max_length, dtype=np.float32)
+            new_force_error[:self.max_data_length] = self.force_error
+            new_force_error[self.max_data_length:].fill(np.nan)
+            self.force_error = new_force_error
+            
+            new_angular_error = np.zeros(new_max_length, dtype=np.float32)
+            new_angular_error[:self.max_data_length] = self.angular_error
+            new_angular_error[self.max_data_length:].fill(np.nan)
+            self.angular_error = new_angular_error
+            
+            new_states = np.zeros(new_max_length, dtype=np.int32)
+            new_states[:self.max_data_length] = self.states
+            self.states = new_states
+            
+            new_tether_initialized_status = np.zeros(new_max_length, dtype=np.bool_)
+            new_tether_initialized_status[:self.max_data_length] = self.tether_initialized_status
+            self.tether_initialized_status = new_tether_initialized_status
+            
+            new_apex = np.zeros((new_max_length, 3), dtype=np.float32)
+            new_apex[:self.max_data_length] = self.apex
+            new_apex[self.max_data_length:].fill(np.nan)
+            self.apex = new_apex
+            
+            # Update max length
+            self.max_data_length = new_max_length
+    
+    def add_data_point(self, time_utc, tether1_length, tether2_length, tether3_length, 
+                    apex_position, forces, state, operation_mode, command, 
+                    response_time=None, loadcell1=None, loadcell2=None, loadcell3=None,
+                    force_err=None, angle_err=None, response="", is_initialized=False):
+        """Add a data point to all arrays efficiently"""
+        # Expand arrays if needed
+        self.expand_arrays_if_needed()
+        
+        # Add data to pre-allocated arrays at the current index
+        # Object arrays need to be appended since they can't be pre-allocated with NaN
+        self.time_utc = np.append(self.time_utc, time_utc)
+        self.operation_modes = np.append(self.operation_modes, operation_mode)
+        self.sent_commands = np.append(self.sent_commands, command)
+        self.responses = np.append(self.responses, response)
+        
+        # Set values in pre-allocated numeric arrays
+        self.states[self.data_length] = state
+        self.tether_initialized_status[self.data_length] = is_initialized
+        
+        # Set tether lengths if provided - ensure 2 decimal places
+        if tether1_length is not None:
+            self.tether_length_one[self.data_length] = round(float(tether1_length), 2)
+        if tether2_length is not None:
+            self.tether_length_two[self.data_length] = round(float(tether2_length), 2)
+        if tether3_length is not None:
+            self.tether_length_three[self.data_length] = round(float(tether3_length), 2)
+        
+        # Set apex position if provided - ensure 2 decimal places
+        if apex_position is not None:
+            self.apex[self.data_length] = [round(float(val), 2) for val in apex_position]
+        
+        # Set forces if provided - ensure 2 decimal places
+        if forces is not None:
+            self.tether_force_one[self.data_length] = round(float(forces[0][0]), 2)
+            self.tether_force_two[self.data_length] = round(float(forces[1][0]), 2)
+            self.tether_force_three[self.data_length] = round(float(forces[2][0]), 2)
+        
+        # Set loadcell forces if provided - ensure 2 decimal places
+        if loadcell1 is not None:
+            self.loadcell_force_one[self.data_length] = round(float(loadcell1), 2)
+        if loadcell2 is not None:
+            self.loadcell_force_two[self.data_length] = round(float(loadcell2), 2)
+        if loadcell3 is not None:
+            self.loadcell_force_three[self.data_length] = round(float(loadcell3), 2)
+        
+        # Set response time if provided - ensure 2 decimal places
+        if response_time is not None:
+            self.response_times[self.data_length] = round(float(response_time), 2)
+        
+        # Set errors if provided - ensure 2 decimal places
+        if force_err is not None:
+            self.force_error[self.data_length] = round(float(force_err), 2)
+        if angle_err is not None:
+            self.angular_error[self.data_length] = round(float(angle_err), 2)
+        
+        # Increment data length
+        self.data_length += 1
     
     def create_connection_ui(self):
         # Connection frame
@@ -282,7 +453,6 @@ class ThreeTetherGUI:
                 messagebox.showerror("Input Error", "Please provide all three tether lengths.")
                 return
             
-            
             # Convert to float
             tether1 = float(self.tether_one_length.get())
             tether2 = float(self.tether_two_length.get())
@@ -296,17 +466,95 @@ class ThreeTetherGUI:
             # Set initialized flag
             self.tether_lengths_initialized = True
             
+            # Calculate apex and forces
+            initial_guess = [0, 0, -3]
+            _, _, _, apex_position, forces = self.get_tether_lengths_and_calculate_apex(initial_guess)
+            
+            # Round apex position and forces for display
+            rounded_apex = [round(val, 2) for val in apex_position]
+            rounded_forces = [round(forces[0][0], 2), round(forces[1][0], 2), round(forces[2][0], 2)]
+            
+            # Create initialization message (we'll display this after UI is ready)
+            initialization_text = (
+                f"Tether lengths initialized:\n"
+                f"Tether 1: {tether1:.2f} inches, Offset: {self.encoder_one_offset:.2f}\n"
+                f"Tether 2: {tether2:.2f} inches, Offset: {self.encoder_two_offset:.2f}\n"
+                f"Tether 3: {tether3:.2f} inches, Offset: {self.encoder_three_offset:.2f}\n"
+                f"Forces: {rounded_forces[0]}, {rounded_forces[1]}, {rounded_forces[2]}\n"
+            )
+            
+            # Add initial data point for initialization
+            current_utc = datetime.now(timezone.utc)
+            self.add_data_point(
+                time_utc=current_utc,
+                tether1_length=tether1,
+                tether2_length=tether2,
+                tether3_length=tether3,
+                apex_position=apex_position,
+                forces=forces,
+                state=2,  # Initialization state
+                operation_mode="Initialization",
+                command=None,  # Will update after sending
+                is_initialized=True
+            )
+            
+            # Format command (state 2 is usually for initialization)
+            command = f'{2},{rounded_forces[0]},{rounded_forces[1]},{rounded_forces[2]}\n'
+            
+            # Update the command in the data point
+            self.sent_commands[-1] = command.strip()
+            
+            # Clear input buffer before sending
+            self.serial_connection.reset_input_buffer()
+            
+            # Send command to microcontroller
+            self.serial_connection.write(command.encode('utf-8'))
+            
+            # Store command for later display
+            initialization_text += f"Command sent: {command.strip()}\n"
+            
+            # Wait for response with timeout
+            response_timeout = time.time() + 2.0  # 2 second timeout
+            response = None
+            
+            while response is None and time.time() < response_timeout:
+                if self.serial_connection.in_waiting > 0:
+                    response = self.serial_connection.readline().decode('utf-8').strip()
+                    if response:
+                        # Process the response using existing function
+                        self.process_response(response, self.data_length-1, apex_position)
+                        initialization_text += f"Response received: {response}\n"
+                        break
+                time.sleep(0.001)  # Small delay to prevent CPU hogging
+            
+            # Handle case when no response is received
+            if response is None:
+                initialization_text += "No response received within timeout.\n"
+                # Add placeholder data to ensure consistency
+                self.responses = np.append(self.responses, "No response")
+                
+                # Set NaN values for missing numeric data
+                self.response_times[self.data_length-1] = np.nan
+                self.loadcell_force_one[self.data_length-1] = np.nan
+                self.loadcell_force_two[self.data_length-1] = np.nan
+                self.loadcell_force_three[self.data_length-1] = np.nan
+                self.force_error[self.data_length-1] = np.nan
+                self.angular_error[self.data_length-1] = np.nan
+            
+            # Store the initialization text for later display
+
+            self.initialization_message = initialization_text
+            
             # Switch to operation UI
             self.create_operation_ui()
-            self.update_data_display(
-                f"Tether lengths initialized:\n"
-                f"Tether 1: {tether1} inches, Offset: {self.encoder_one_offset}\n"
-                f"Tether 2: {tether2} inches, Offset: {self.encoder_two_offset}\n"
-                f"Tether 3: {tether3} inches, Offset: {self.encoder_three_offset}\n"
-            )
+            
+            # Now that the UI is created, we can safely update the data display
+            self.update_data_display(self.initialization_message)
             
         except ValueError:
             messagebox.showerror("Input Error", "Please ensure all tether lengths are valid numbers.")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {str(e)}")
         
     def start_operation(self):
         self.running = True
@@ -314,7 +562,7 @@ class ThreeTetherGUI:
         self.stop_btn.config(state="normal")
         
         # Make sure current_state is set to 3 when starting
-        self.current_state = 3
+        self.current_state = 4
         
         # Start the operation in a separate thread
         self.operation_thread = threading.Thread(target=self.run_operation)
@@ -346,19 +594,22 @@ class ThreeTetherGUI:
         tether3_length = self.encoder_three.angle2length(
             float(self.tether_three_length.get()), offset=self.encoder_three_offset)
         
-        print(tether1_length)
-        print(tether2_length)
-        print(tether3_length)
+        # Round to 2 decimal places for display in console
+        print(f"Tether 1: {tether1_length:.2f}")
+        print(f"Tether 2: {tether2_length:.2f}")
+        print(f"Tether 3: {tether3_length:.2f}")
         
         # Calculate apex position
         apex_position = self.three_teth_calc.calculate_apex(
             tether1_length/12, tether2_length/12, tether3_length/12, initial_guess
         )
-        print(apex_position)
+        # Round apex position for display in console
+        print(f"Apex: [{apex_position[0]:.2f}, {apex_position[1]:.2f}, {apex_position[2]:.2f}]")
         
         # Calculate forces
         forces = self.three_teth_calc.calculate_tether_forces(apex_position)
-        print(forces)
+        # Round forces for display in console
+        print(f"Forces: {forces[0][0]:.2f}, {forces[1][0]:.2f}, {forces[2][0]:.2f}")
         
         return tether1_length, tether2_length, tether3_length, apex_position, forces
         
@@ -385,32 +636,40 @@ class ThreeTetherGUI:
                 
                 # Calculate tether lengths and apex if initialized
                 if self.tether_lengths_initialized:
-                    initial_guess = self.apex[-1] if (j > 0 and len(self.apex) > 0 and self.apex[-1] is not None) else [0, 0, -3]
+                    # Get initial guess for apex position
+                    if j > 0 and self.data_length > 0 and not np.isnan(self.apex[self.data_length-1, 0]):
+                        initial_guess = self.apex[self.data_length-1]
+                    else:
+                        initial_guess = [0, 0, -3]
+                    
                     tether1_length, tether2_length, tether3_length, apex_position, forces = self.get_tether_lengths_and_calculate_apex(initial_guess)
                 
-                # Record data
-                self.time_utc.append(current_utc)
-                self.operation_modes.append("Automatic")
-                self.tether_length_one.append(tether1_length)
-                self.tether_length_two.append(tether2_length)
-                self.tether_length_three.append(tether3_length)
-                self.apex.append(apex_position)
-                self.tether_initialized_status.append(self.tether_lengths_initialized)
+                # Add data point to arrays
+                self.add_data_point(
+                    time_utc=current_utc,
+                    tether1_length=tether1_length,
+                    tether2_length=tether2_length,
+                    tether3_length=tether3_length,
+                    apex_position=apex_position,
+                    forces=forces,
+                    state=self.current_state,
+                    operation_mode="Automatic",
+                    command=None,  # Will be updated after sending
+                    is_initialized=self.tether_lengths_initialized
+                )
                 
-                # Use calculated forces if available, otherwise use zeros
+                # Format command with all required parameters - ensure 2 decimal places
                 if self.tether_lengths_initialized:
-                    self.tether_force_one.append(forces[0][0])
-                    self.tether_force_two.append(forces[1][0])
-                    self.tether_force_three.append(forces[2][0])
+                    force1 = round(forces[0][0], 2)
+                    force2 = round(forces[1][0], 2)
+                    force3 = round(forces[2][0], 2)
                 else:
-                    self.tether_force_one.append(0)
-                    self.tether_force_two.append(0)
-                    self.tether_force_three.append(0)
+                    force1 = 0.0
+                    force2 = 0.0
+                    force3 = 0.0
                 
-                self.states.append(self.current_state)
-                
-                # Format command with all required parameters
-                command = f'{self.current_state},{self.tether_force_one[-1]:.2f},{self.tether_force_two[-1]:.2f},{self.tether_force_three[-1]:.2f}\n'
+                # Use formatting to ensure exactly 2 decimal places in the command
+                command = f'{self.current_state},{force1:.2f},{force2:.2f},{force3:.2f}\n'
                 
                 # Clear input buffer before sending new command to avoid multiple responses
                 self.serial_connection.reset_input_buffer()
@@ -420,16 +679,19 @@ class ThreeTetherGUI:
                 
                 # Keep track of sent commands
                 self.command_vec.append(command)
-                self.sent_commands.append(command.strip())
+                
+                # Update the command in the latest data point
+                self.sent_commands[-1] = command.strip()
                 
                 # Format the output string with the current state and mode
                 output_text = f"Mode: Automatic\n"
                 
                 if self.tether_lengths_initialized:
-                    output_text += f"Apex: {apex_position}\n"
+                    # Format apex position with 2 decimal places for display
+                    rounded_apex = [round(val, 2) for val in apex_position]
+                    output_text += f"Apex: [{rounded_apex[0]}, {rounded_apex[1]}, {rounded_apex[2]}]\n"
                 else:
                     output_text += "Tether lengths not initialized - using default values\n"
-                    output_text += f"Forces: 0.0000, 0.0000, 0.0000\n"
                 
                 output_text += f"Command: {command.strip()}\n"
                 
@@ -448,7 +710,7 @@ class ThreeTetherGUI:
                     if self.serial_connection.in_waiting > 0:
                         response = self.serial_connection.readline().decode('utf-8').strip()
                         if response:
-                            self.process_response(response, j, apex_position)
+                            self.process_response(response, self.data_length-1, apex_position)
                             break
                     
                     # Small sleep to prevent CPU hogging
@@ -458,13 +720,15 @@ class ThreeTetherGUI:
                 if response is None:
                     self.update_data_display("No response received within timeout, continuing...\n")
                     # Add placeholder data to ensure consistency
-                    self.responses.append("No response")
-                    self.response_times.append(None)
-                    self.loadcell_force_one.append(None)
-                    self.loadcell_force_two.append(None)
-                    self.loadcell_force_three.append(None)
-                    self.force_error.append(None)
-                    self.angular_error.append(None)
+                    self.responses = np.append(self.responses, "No response")
+                    
+                    # Set NaN values for missing numeric data
+                    self.response_times[self.data_length-1] = np.nan
+                    self.loadcell_force_one[self.data_length-1] = np.nan
+                    self.loadcell_force_two[self.data_length-1] = np.nan
+                    self.loadcell_force_three[self.data_length-1] = np.nan
+                    self.force_error[self.data_length-1] = np.nan
+                    self.angular_error[self.data_length-1] = np.nan
                 
                 # Increment counter
                 j += 1
@@ -475,42 +739,41 @@ class ThreeTetherGUI:
                 error_msg = f"Error in operation: {str(e)}\n"
                 self.root.after(0, lambda msg=error_msg: self.update_data_display(msg))
                 time.sleep(1)  # Short delay after an error
-                
-                # Add placeholder data to ensure consistency in data arrays
-                if len(self.operation_modes) > len(self.loadcell_force_one):
-                    self.loadcell_force_one.append(None)
-                    self.loadcell_force_two.append(None)
-                    self.loadcell_force_three.append(None)
-                    self.responses.append("")
-                    self.response_times.append(None)
-                    self.force_error.append(None)
-                    self.angular_error.append(None)
 
     def process_response(self, response, index, apex=None):
         try:
-            # Store raw response
-            self.responses.append(response)
+            # Make sure the responses array has the same length as our data arrays
+            # This prevents the mismatch between responses and other data
+            if len(self.responses) <= index:
+                # Extend the responses array to match the index position
+                extension_needed = index + 1 - len(self.responses)
+                self.responses = np.append(self.responses, [None] * extension_needed)
+            
+            # Update response at the correct index instead of appending
+            self.responses[index] = response
             
             # Parse the response (expected format: time,loadcell1,loadcell2,loadcell3)
             parts = response.split(',')
             
             if len(parts) >= 4:
-                self.response_times.append(float(parts[0]) if parts[0] else None)
-                self.loadcell_force_one.append(float(parts[1]) if parts[1] else None)
-                self.loadcell_force_two.append(float(parts[2]) if parts[2] else None)
-                self.loadcell_force_three.append(float(parts[3]) if parts[3] else None)
-                
+                # Round each value to 2 decimal places
+                self.response_times[index] = round(float(parts[0]), 2) if parts[0] else np.nan
+                self.loadcell_force_one[index] = round(float(parts[1]), 2) if parts[1] else np.nan
+                self.loadcell_force_two[index] = round(float(parts[2]), 2) if parts[2] else np.nan
+                self.loadcell_force_three[index] = round(float(parts[3]), 2) if parts[3] else np.nan
+                    
             if apex is not None and self.tether_lengths_initialized:
                 # Use only the most recent loadcell force values
-                loadcell1 = self.loadcell_force_one[-1] if self.loadcell_force_one else None
-                loadcell2 = self.loadcell_force_two[-1] if self.loadcell_force_two else None
-                loadcell3 = self.loadcell_force_three[-1] if self.loadcell_force_three else None
+                loadcell1 = self.loadcell_force_one[index] if not np.isnan(self.loadcell_force_one[index]) else None
+                loadcell2 = self.loadcell_force_two[index] if not np.isnan(self.loadcell_force_two[index]) else None
+                loadcell3 = self.loadcell_force_three[index] if not np.isnan(self.loadcell_force_three[index]) else None
                 
                 # Only proceed if we have valid loadcell values
                 if loadcell1 is not None and loadcell2 is not None and loadcell3 is not None:
                     f_err, angle_err, _, _, _ = self.three_teth_calc.calculate_tether_error(apex, [loadcell1, loadcell2, loadcell3])
-                    self.force_error.append(f_err)
-                    self.angular_error.append(angle_err)
+                    # Round errors to 2 decimal places
+                    self.force_error[index] = round(f_err, 2)
+                    self.angular_error[index] = round(angle_err, 2)
                 
                 # Display response
                 response_text = f"Response: {response}\n"
@@ -518,32 +781,18 @@ class ThreeTetherGUI:
             else:
                 # Handle non-numeric responses (typical for state 2)
                 self.root.after(0, lambda r=response: self.update_data_display(f"Response: {r}\n"))
-                self.response_times.append(None)
-                self.loadcell_force_one.append(None)
-                self.loadcell_force_two.append(None)
-                self.loadcell_force_three.append(None)
-                self.force_error.append(None)
-                self.angular_error.append(None)
+                # Set all numeric values to NaN
+                self.response_times[index] = np.nan
+                self.loadcell_force_one[index] = np.nan
+                self.loadcell_force_two[index] = np.nan
+                self.loadcell_force_three[index] = np.nan
+                self.force_error[index] = np.nan
+                self.angular_error[index] = np.nan
         
         except Exception as e:
             error_msg = f"Error processing response: {str(e)}\n"
             self.root.after(0, lambda msg=error_msg: self.update_data_display(msg))
-            # Add empty placeholders if parsing fails
-            if len(self.responses) <= index:
-                self.responses.append(response)
-            if len(self.response_times) <= index:
-                self.response_times.append(None)
-            if len(self.loadcell_force_one) <= index:
-                self.loadcell_force_one.append(None)
-            if len(self.loadcell_force_two) <= index:
-                self.loadcell_force_two.append(None)
-            if len(self.loadcell_force_three) <= index:
-                self.loadcell_force_three.append(None)
-            if len(self.force_error) <= index:
-                self.force_error.append(None)
-            if len(self.angular_error) <= index:
-                self.angular_error.append(None)
-        
+    
     def update_data_display(self, text):
         self.data_text.insert(tk.END, text)
         self.data_text.see(tk.END)
@@ -563,7 +812,6 @@ class ThreeTetherGUI:
                 csvwriter = csv.writer(csvfile)
                 
                 # Write header row with additional columns for response data
-                # Removed 'Microseconds Since Start' from the header
                 csvwriter.writerow([
                     'UTC Time',
                     'Tether 1 Length', 'Tether 2 Length', 'Tether 3 Length',
@@ -574,52 +822,39 @@ class ThreeTetherGUI:
                     'Tether Lengths Initialized'
                 ])
                 
-                # Write data rows
-                for i in range(len(self.time_utc)):
-                    # Get values, using None for missing data
-                    command = self.sent_commands[i] if i < len(self.sent_commands) else ""
-                    mode = self.operation_modes[i] if i < len(self.operation_modes) else "Automatic"
+                # Write data rows - only use valid data up to current data_length
+                for i in range(self.data_length):
+                    # Handle apex data which is a 3D array - ensure 2 decimal places
+                    apex_x = round(self.apex[i, 0], 2) if not np.isnan(self.apex[i, 0]) else None
+                    apex_y = round(self.apex[i, 1], 2) if not np.isnan(self.apex[i, 1]) else None
+                    apex_z = round(self.apex[i, 2], 2) if not np.isnan(self.apex[i, 2]) else None
                     
-                    # Handle apex data which may be None for state 2 or when tethers aren't initialized
-                    if i < len(self.apex) and self.apex[i] is not None:
-                        apex_x = self.apex[i][0]
-                        apex_y = self.apex[i][1]
-                        apex_z = self.apex[i][2]
-                    else:
-                        apex_x = None
-                        apex_y = None
-                        apex_z = None
-                    
-                    response = self.responses[i] if i < len(self.responses) else ""
-                    resp_time = self.response_times[i] if i < len(self.response_times) else None
-                    lc1 = self.loadcell_force_one[i] if i < len(self.loadcell_force_one) else None
-                    lc2 = self.loadcell_force_two[i] if i < len(self.loadcell_force_two) else None
-                    lc3 = self.loadcell_force_three[i] if i < len(self.loadcell_force_three) else None
-                    
-                    # Write the row without microseconds
-                    csvwriter.writerow([
+                    # Create data row with proper handling of NaN values and ensuring 2 decimal places
+                    row = [
                         self.time_utc[i],
-                        self.tether_length_one[i] if i < len(self.tether_length_one) else None,
-                        self.tether_length_two[i] if i < len(self.tether_length_two) else None,
-                        self.tether_length_three[i] if i < len(self.tether_length_three) else None,
+                        round(self.tether_length_one[i], 2) if not np.isnan(self.tether_length_one[i]) else None,
+                        round(self.tether_length_two[i], 2) if not np.isnan(self.tether_length_two[i]) else None,
+                        round(self.tether_length_three[i], 2) if not np.isnan(self.tether_length_three[i]) else None,
                         apex_x,
                         apex_y,
                         apex_z,
-                        self.tether_force_one[i] if i < len(self.tether_force_one) else None,
-                        self.tether_force_two[i] if i < len(self.tether_force_two) else None,
-                        self.tether_force_three[i] if i < len(self.tether_force_three) else None,
-                        self.states[i] if i < len(self.states) else None,
-                        mode,
-                        command,
-                        resp_time,
-                        lc1,
-                        lc2, 
-                        lc3,
-                        self.force_error[i] if i < len(self.force_error) else None,
-                        self.angular_error[i] if i < len(self.angular_error) else None,
-                        response,
-                        self.tether_initialized_status[i] if i < len(self.tether_initialized_status) else False
-                    ])
+                        round(self.tether_force_one[i], 2) if not np.isnan(self.tether_force_one[i]) else None,
+                        round(self.tether_force_two[i], 2) if not np.isnan(self.tether_force_two[i]) else None,
+                        round(self.tether_force_three[i], 2) if not np.isnan(self.tether_force_three[i]) else None,
+                        int(self.states[i]),
+                        self.operation_modes[i] if i < len(self.operation_modes) else "Automatic",
+                        self.sent_commands[i] if i < len(self.sent_commands) else "",
+                        round(self.response_times[i], 2) if not np.isnan(self.response_times[i]) else None,
+                        round(self.loadcell_force_one[i], 2) if not np.isnan(self.loadcell_force_one[i]) else None,
+                        round(self.loadcell_force_two[i], 2) if not np.isnan(self.loadcell_force_two[i]) else None,
+                        round(self.loadcell_force_three[i], 2) if not np.isnan(self.loadcell_force_three[i]) else None,
+                        round(self.force_error[i], 2) if not np.isnan(self.force_error[i]) else None,
+                        round(self.angular_error[i], 2) if not np.isnan(self.angular_error[i]) else None,
+                        self.responses[i] if i < len(self.responses) else "",
+                        bool(self.tether_initialized_status[i])
+                    ]
+                    
+                    csvwriter.writerow(row)
             
             return filepath  # Return the filepath for confirmation message
         except Exception as e:
@@ -640,9 +875,13 @@ class ThreeTetherGUI:
             command_parts = command.split(',')
             if len(command_parts) >= 4:
                 self.manual_state = int(command_parts[0])
-                self.manual_force1 = float(command_parts[1])
-                self.manual_force2 = float(command_parts[2])
-                self.manual_force3 = float(command_parts[3])
+                # Round manual forces to 2 decimal places
+                self.manual_force1 = round(float(command_parts[1]), 2)
+                self.manual_force2 = round(float(command_parts[2]), 2)
+                self.manual_force3 = round(float(command_parts[3]), 2)
+                
+                # Reformat command to ensure 2 decimal places
+                command = f"{self.manual_state},{self.manual_force1:.2f},{self.manual_force2:.2f},{self.manual_force3:.2f}"
             else:
                 self.update_data_display("Error: Command must be in format: state,force1,force2,force3\n")
                 return
@@ -694,13 +933,6 @@ class ThreeTetherGUI:
                         # Record timestamp (UTC only now)
                         current_utc = datetime.now(timezone.utc)
                         
-                        # Store base data that's always needed
-                        self.time_utc.append(current_utc)
-                        self.operation_modes.append("Manual")
-                        self.states.append(manual_state)
-                        self.sent_commands.append(self.latest_command if hasattr(self, 'latest_command') else "")
-                        self.tether_initialized_status.append(self.tether_lengths_initialized)
-                        
                         # Initialize values
                         tether1_length = None
                         tether2_length = None
@@ -710,42 +942,56 @@ class ThreeTetherGUI:
                         # Calculate tether data if initialized
                         if self.tether_lengths_initialized:
                             # For states where we need tether calculations
-                            initial_guess = self.apex[-1] if (len(self.apex) > 0 and self.apex[-1] is not None) else [0, 0, -3]
+                            if self.data_length > 0 and not np.isnan(self.apex[self.data_length-1, 0]):
+                                initial_guess = self.apex[self.data_length-1]
+                            else:
+                                initial_guess = [0, 0, -3]
+                            
                             tether1_length, tether2_length, tether3_length, apex_position, _ = self.get_tether_lengths_and_calculate_apex(initial_guess)
                             
-                            # Store the tether data
-                            self.tether_length_one.append(tether1_length)
-                            self.tether_length_two.append(tether2_length)
-                            self.tether_length_three.append(tether3_length)
-                            self.apex.append(apex_position)
+                            # Format values for display with 2 decimal places
+                            t1_rounded = round(tether1_length, 2)
+                            t2_rounded = round(tether2_length, 2)
+                            t3_rounded = round(tether3_length, 2)
+                            apex_rounded = [round(val, 2) for val in apex_position]
                             
-                            #Display data
-                            self.root.after(0, lambda t1=tether1_length, t2=tether2_length, t3=tether3_length, ap=apex_position, 
+                            # Display data
+                            self.root.after(0, lambda t1=t1_rounded, t2=t2_rounded, t3=t3_rounded, ap=apex_rounded, 
                                             f1=manual_force1, f2=manual_force2, f3=manual_force3: 
                                             self.update_data_display(
                                                 f"Tether data for State {manual_state}:\n"
                                                 f"Lengths: {t1:.2f}, {t2:.2f}, {t3:.2f}\n"
-                                                f"Apex: {ap}\n"
-                                                f"Forces: {f1}, {f2}, {f3}\n"
+                                                f"Apex: [{ap[0]}, {ap[1]}, {ap[2]}]\n"
+                                                f"Forces: {f1:.2f}, {f2:.2f}, {f3:.2f}\n"
                                             ))
                         else:
-                            # For other states without tether calculations
-                            self.tether_length_one.append(None)
-                            self.tether_length_two.append(None)
-                            self.tether_length_three.append(None)
-                            self.apex.append(None)
-                            
                             # Show basic info when tethers not initialized
-                            self.root.after(0, lambda st=manual_state: 
-                                            self.update_data_display(f"Manual command for State {st} (Tethers not initialized)\n"))
+                            self.root.after(0, lambda st=manual_state, f1=manual_force1, f2=manual_force2, f3=manual_force3: 
+                                            self.update_data_display(f"Manual command for State {st} "
+                                                                     f"(Tethers not initialized)\n"
+                                                                     f"Forces: {f1:.2f}, {f2:.2f}, {f3:.2f}\n"))
                         
-                        # Always store the forces from manual command
-                        self.tether_force_one.append(manual_force1)
-                        self.tether_force_two.append(manual_force2)
-                        self.tether_force_three.append(manual_force3)
+                        # Add data to arrays
+                        self.add_data_point(
+                            time_utc=current_utc,
+                            tether1_length=tether1_length,
+                            tether2_length=tether2_length,
+                            tether3_length=tether3_length,
+                            apex_position=apex_position,
+                            forces=None,  # No calculated forces in manual mode
+                            state=manual_state,
+                            operation_mode="Manual",
+                            command=self.latest_command,
+                            is_initialized=self.tether_lengths_initialized
+                        )
+                        
+                        # Set forces from manual command directly
+                        self.tether_force_one[self.data_length-1] = manual_force1
+                        self.tether_force_two[self.data_length-1] = manual_force2
+                        self.tether_force_three[self.data_length-1] = manual_force3
                         
                         # Process response
-                        self.process_response(response, len(self.time_utc) - 1, apex_position)
+                        self.process_response(response, self.data_length-1, apex_position)
                 
                 # Small sleep to prevent CPU hogging
                 time.sleep(0.001)
@@ -761,7 +1007,7 @@ class ThreeTetherGUI:
         self.manual_monitoring = False
         
         # Ask user if they want to save data
-        if len(self.time_utc) > 0:  # Only offer to save if there's data
+        if self.data_length > 0:  # Only offer to save if there's data
             save = messagebox.askyesno("Save Data", "Would you like to save the collected data to CSV?")
             if save:
                 # Ask for filename
