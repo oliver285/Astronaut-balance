@@ -23,5 +23,5 @@ class Parameters:
 
 
     dt = 0.002
-    force_update_rate = dt + 0.005
+    force_update_rate = dt + 0.025
     reaction_t = 0.023

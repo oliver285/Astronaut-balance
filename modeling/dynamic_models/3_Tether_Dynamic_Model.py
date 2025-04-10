@@ -378,7 +378,7 @@ def main():
     t1 = 0
     
     # Set tilt axis ('x' or 'y')
-    tilt_axis = 'x'
+    tilt_axis = 'z'
     
     # Generate COM movement and tilt angles
     positions, tilt_angles = simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis)

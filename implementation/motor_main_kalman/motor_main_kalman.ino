@@ -69,7 +69,7 @@
 // load cell parameters
 #define adcResolution 12
 #define LOAD_CELL_MAX_FORCE 220.462 // lbs
-double max_allowable_force = 50; // lbs, cutoff before absolute max load cell force
+double max_allowable_force = 150; // lbs, cutoff before absolute max load cell force
 const int analogPins[3] = {A10, A11, A12};
 // empirically determined linear scale factor of the load cell
 // double scale_factor[3] = {1.1316, 1.1316, 1.1316};
@@ -78,14 +78,18 @@ double scale_factor[3] = {0.977662904235, 0.974399048854, 0.975303160436};
 // double offset[3] = {1.4, 1.4, 1.4};
 double offset[3] = {1.5, 3.3, 1.34};
 double load_cell[3] = {0, 0, 0};
+double accumulator[3] = {0.0,0.0,0.0};
 
 // control parameters
-double kp[3] = {1.5, 1.5, 1.5};
-double ki[3] = {0.2, 0.2, 0.2};
-double kd[3] = {0.2, 0.2, 0.2};
-// double kp[3] = {0.0, 0.0, 0.0};
-// double ki[3] = {0.0, 0.0, 0.0};
-// double kd[3] = {0.0, 0.0, 0.0};
+// Control parameters
+double ku=3.0;
+double pu=.110;
+
+double kp[3] = {ku/1.7, ku/1.7, ku/1.7};
+double ki[3] = {pu/2, pu/2, pu/2}; // was pu/2
+double kd[3] = {pu/8, pu/8, pu/8};
+
+
 double F_err_prev[3] = {0.0, 0.0, 0.0};
 // maybe make this array?
 unsigned long prev_time[3] = {0.0, 0.0, 0.0};
@@ -107,12 +111,10 @@ char input[IN_BUFFER_LEN+1];
 int prev_input1, input1 = 0;
 
 // defines start of test (entering state3)
-double t_init = 0;
+unsigned long t_init = 0;
 
 // flag to tell input 3 to normalize millis()
 bool test_start = false;
-// flag to determine whether the torque has to be ramped from zero or not
-bool ramp_done = false;
 
 // Declares helper functions
 void ramp_up_motor();
@@ -208,6 +210,8 @@ void loop() {
     // save off state to input 1
     input1 = float_inputs[0];
 
+    // the user cannot go into state 3 directly
+
     // read the load cells
     readLoadCell();
     // debugging message
@@ -221,32 +225,64 @@ void loop() {
     double dt = 0;
     for(int i = 0; i<num_motors; i++){
       // define holding torque
-      torque_command[i] = force2Torque(float_inputs[i+1]);
+      if (torque_command[i] != force2Torque(float_inputs[i+1])){
+        torque_command[i] = force2Torque(float_inputs[i+1]);
+      }
+      // torque_command[i] = float_inputs[i+1];
 
-      // add control torque to holding torque command
-      if(ramp_done){
+      if (input1 != 2 && input1 != 1){
+        // add control torque to holding torque command
         F_err = float_inputs[i+1]-load_cell[i];
         dt = (millis() - prev_time[i])/1000.0; // dt in seconds for derivative gain
         F_err_dot = (F_err-F_err_prev[i])/dt;
         // TODO: currently only in klaman version, not ra
-        if (abs(F_err) < 0.25){
-          integral[i] = 0;
-        }
-        else{
-          integral[i] += F_err*dt;
-        }
-        Serial.println(String(integral[i]));
+        integral[i] += F_err*dt;
+
+        // Serial.println(String(float_inputs[i+1]));
+        // Serial.println(String(load_cell[i]));
+        // Serial.println(String(F_err_dot));
+        // Serial.println(String(dt));
+        // Serial.println(String(ki[i]*integral[i]));
+
         Tau_m_adj = kp[i]*F_err + ki[i]*integral[i] + kd[i]*F_err_dot;
+        // Tau_m_adj = kp[i]*F_err + integral[i] + kd[i]*F_err_dot;
         // Serial.println(String(force2Torque(Tau_m_adj)));
+        if(force2Torque(Tau_m_adj+torque_command[i])>max_allowable_force){
+          Tau_m_adj=0;
+        }
+
+        // dont want to enter control before we start ramping 
         torque_command[i] = torque_command[i] + force2Torque(Tau_m_adj);
+
+        // update F_err_prev and prev time
+        F_err_prev[i] = F_err;
+        prev_time[i] = millis();
       }
 
-      // update F_err_prev and prev time
-      F_err_prev[i] = F_err;
-      prev_time[i] = millis();
+      if (input1 != 2 && input1 != 1){
+      Serial.println("\n");
+      }
+
+
+      // TODO: alternate approach
+      // if (input1 != 2 && input1 != 1){
+      //   if(abs(load_cell[i]  - float_inputs[i+1]) > 0.25){
+      //     if (load_cell[i] < float_inputs[i+1]){
+      //       accumulator[i] += 0.01;
+      //       torque_command[i] += accumulator[i];
+      //     }
+      //     else{
+      //       accumulator[i] -= 0.01;
+      //       torque_command[i] += accumulator[i];
+      //     }
+      //   }
+      //   else{
+      //     torque_command[i] += accumulator[i];
+      //   }
+      // }
     }
 
-    Serial.print("\n");
+    // Serial.print("\n");
     // Serial.println("Torque command: " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
 
 
@@ -259,7 +295,7 @@ void loop() {
       case 1:
         {
           test_start = false;
-          ramp_done = false;
+
           // Serial.print("state 1 \n");
 
           // disable motors
@@ -267,6 +303,12 @@ void loop() {
             multipleMotorEnable(false);
             Serial.print("motor(s) disabled \n");
           }
+
+          // set integral back to zero if we exit 
+          for(int i = 0; i<num_motors; i++){
+            integral[i] = 0;
+          }
+
           break;
         }
 
@@ -281,14 +323,16 @@ void loop() {
             Serial.print("motor(s) enabled \n");
           }
 
-          if(!ramp_done){
-            // ramp_up_motor();
-            ramp_up_motor(float_inputs);
-            ramp_done = true;
+          // set integral back to zero if we exit 
+          for(int i = 0; i<num_motors; i++){
+            integral[i] = 0;
           }
-          else{
-            CommandTorque();    // See below for the detailed function definition.
+
+
+          if (prev_input1 == 1){
+            torque_command = {0.0, 0.0, 0.0};
           }
+          ramp_up_motor(float_inputs);
 
           break;
         }
@@ -296,6 +340,18 @@ void loop() {
       case 3:
         {
           // cannot jump directly to state 3 from 1
+            if (prev_input1 == 1){
+              Serial.print("Invalid jump \n");
+              input[0] = '1';
+              break;
+            }
+          // entered automatically after ramping complete
+          CommandTorque(); 
+          break;
+        }
+      case 4:
+        {
+          // cannot jump directly to state 4 from 1
           if (prev_input1 == 1){
             Serial.print("Invalid jump \n");
             input[0] = '1';
@@ -312,14 +368,13 @@ void loop() {
           // prints load cell outputs, depends on numbers of motors connected
           switch (num_motors){
             case 1:
-              // Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + "\n");
-              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(torque_command[0]) + "\n");
+              Serial.println(String(millis() - t_init) + ", " + String(load_cell[0]) + "\n");
               break;
             case 2:
-              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + "\n");
+              Serial.println(String(millis() - t_init) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + "\n");
               break;
             case 3:
-              Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
+              Serial.println(String(millis() - t_init) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + "\n");
               // Serial.println(String(millis() - t_init, 4) + ", " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
               // Serial.println(String(millis() - t_init, 4) + ", " + String(load_cell[0]) + ", " + String(load_cell[1]) + ", " + String(load_cell[2]) + ", " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) +"\n");
               break;
@@ -341,8 +396,6 @@ void loop() {
 
 // slowly ramp up the motor to the desired force whenever the state goes from 1 to 2, assumes motors are already enabled
 void ramp_up_motor(const std::vector<float>& inputs){
-  
-  torque_command = {0.0, 0.0, 0.0};
   Serial.print("Motors ramping\n");
 
   bool ramped[3] = {false,false,false};
@@ -350,19 +403,24 @@ void ramp_up_motor(const std::vector<float>& inputs){
   while(!ramped[0] || !ramped[1] || !ramped[2]){
     readLoadCell();
     for(int i=0; i<3; i++){
+      // Serial.println(String(load_cell[i]));
       if (abs(load_cell[i]  - inputs[i+1]) < 5.0){
         ramped[i] = true;
       }
       else{
-        if (load_cell[i] < inputs[i+1]){
-          torque_command[i] += 1.0;
-        }
-        else{
-          torque_command[i] -= 1.0;
-        }
-        CommandTorque();
-      }  
+        ramped[i] = false;
+      }
+
+      if (load_cell[i] < inputs[i+1]){
+        torque_command[i] += 0.5;
+      }
+      else{
+        torque_command[i] -= 0.5;
+      }
+
     }
+    CommandTorque();
+    // Serial.println("\n");
 
     if (input[0] == '1'){
       Serial.print("Motor ramp failed\n");
@@ -372,6 +430,9 @@ void ramp_up_motor(const std::vector<float>& inputs){
   }
   
   Serial.print("Motors ramped to commanded torque\n");
+
+  // enter state 3 after successful ramp
+  input[0] = '3';
 }
 
 
@@ -441,23 +502,9 @@ void getNumMotors(){
 
 // enable or disable 1-3 motors depending on what num_motors is
 void multipleMotorEnable(bool request){
-  switch (num_motors){
-    case 1:
-      motor1.EnableRequest(request);
-      break;
-    case 2:
-      motor1.EnableRequest(request);
-      motor2.EnableRequest(request);
-      break;
-    case 3:
-      motor1.EnableRequest(request);
-      motor2.EnableRequest(request);
-      motor3.EnableRequest(request);
-      break;
-    default:
-      Serial.print("incompatible number of motors\n");
-      break;
-  }
+  motor1.EnableRequest(request);
+  if (num_motors > 1) motor2.EnableRequest(request);
+  if (num_motors > 2) motor3.EnableRequest(request);
 }
 
 // toggle direction (A state) depending on num motors
@@ -468,24 +515,9 @@ void checkMotorAState(){
     }
   }
 
-  switch (num_motors){
-    case 1:
-      motor1.MotorInAState(false);
-      break;
-    case 2:
-      motor1.MotorInAState(false);
-      motor2.MotorInAState(false);
-      break;
-    case 3:
-      motor1.MotorInAState(false);
-      motor2.MotorInAState(false);
-      // motor 3 always opposite direction due to physical orientation
-      motor3.MotorInAState(false);
-      break;
-    default:
-      Serial.print("incompatible number of motors\n");
-      break;
-  }
+  motor1.MotorInAState(false);
+  if (num_motors > 1) motor2.MotorInAState(false);
+  if (num_motors > 2) motor3.MotorInAState(false);
 }
 
 
