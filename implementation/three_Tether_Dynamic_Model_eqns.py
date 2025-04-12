@@ -27,8 +27,7 @@ class three_teth_model:
                         z - (self.teth_anchor[2][2] + self.offset[2][2])) ** 2 - c ** 2,
         )
 
-    def calculate_apex(self, a, b, c):
-        initial_guess = [2, 2, -4]  # Start with a point above the base
+    def calculate_apex(self, a, b, c, initial_guess):
         apex = fsolve(self.equations, np.array(initial_guess), args=(a, b, c))
         return apex
 
