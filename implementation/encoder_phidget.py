@@ -8,6 +8,7 @@ class phidget_encoder:
         self.encoder = Encoder()
         self.encoder.setChannel(channel)
         self.encoder.openWaitForAttachment(5000)
+        self.encoder.setDataInterval(20)
         self.spool_radius = 1.07  # inches (1 inch spool rad and 0.7 inches for tether width)
         self.angle = 0.0
         self.length = 0.0
@@ -29,15 +30,10 @@ class phidget_encoder:
         self.angle = self.position_to_degrees(position)
         return self.angle
 
-    def angle2length(self, initial_length):
+    def angle2length(self, initial_length, offset):
         self.angle = self.get_angle()
-        self.length = initial_length + (self.angle/360)*(2*np.pi*self.spool_radius)
+        self.length = initial_length - ((self.angle-offset)/360)*(2*np.pi*self.spool_radius)
         return self.length
-
-
-    # close encoder instance
-    def close_encoder(self):
-        self.encoder.close()
 
 
     # close encoder instance
