@@ -69,7 +69,7 @@
 // load cell parameters
 #define adcResolution 12
 #define LOAD_CELL_MAX_FORCE 220.462 // lbs
-double max_allowable_force = 150; // lbs, cutoff before absolute max load cell force
+double max_allowable_force = 100; // lbs, cutoff before absolute max load cell force
 const int analogPins[3] = {A10, A11, A12};
 // empirically determined linear scale factor of the load cell
 // double scale_factor[3] = {1.1316, 1.1316, 1.1316};
@@ -78,6 +78,7 @@ double scale_factor[3] = {0.977662904235, 0.974399048854, 0.975303160436};
 // double offset[3] = {1.4, 1.4, 1.4};
 double offset[3] = {1.5, 3.3, 1.34};
 double load_cell[3] = {0, 0, 0};
+double prev_load_cell[3] = {0, 0, 0};
 double accumulator[3] = {0.0,0.0,0.0};
 
 // control parameters
@@ -86,13 +87,16 @@ double ku=3.0;
 double pu=.110;
 
 double kp[3] = {ku/1.7, ku/1.7, ku/1.7};
-double ki[3] = {pu/2, pu/2, pu/2}; // was pu/2
+double ki[3] = {24*pu/2, 24*pu/2, 24*pu/2}; // was pu/2
 double kd[3] = {pu/8, pu/8, pu/8};
+// double kp[3] = {0.0, 0.0, 0.0};
+// double ki[3] = {0.0, 0.0, 0.0}; // was pu/2
+// double kd[3] = {0.0, 0.0, 0.0};
 
 
 double F_err_prev[3] = {0.0, 0.0, 0.0};
 // maybe make this array?
-unsigned long prev_time[3] = {0.0, 0.0, 0.0};
+unsigned long prev_time = 0.0;
 double integral[3] = {0.0, 0.0, 0.0};
 std::vector<float> torque_command(3);
 
@@ -125,6 +129,8 @@ void getNumMotors();
 void multipleMotorEnable(bool request);
 void checkMotorAState();
 bool CommandTorque();
+
+// void calculateCouplingFactors();
 
 // moving average object
 SimpleKalmanFilter kalmanFilters[3] = {
@@ -225,24 +231,30 @@ void loop() {
     double dt = 0;
     for(int i = 0; i<num_motors; i++){
       // define holding torque
-      if (torque_command[i] != force2Torque(float_inputs[i+1])){
-        torque_command[i] = force2Torque(float_inputs[i+1]);
-      }
-      // torque_command[i] = float_inputs[i+1];
+      // if (torque_command[i] != force2Torque(float_inputs[i+1])){
+      //   torque_command[i] = force2Torque(float_inputs[i+1]);
+      // }
+      torque_command[i] = force2Torque(float_inputs[i+1]);
 
       if (input1 != 2 && input1 != 1){
         // add control torque to holding torque command
         F_err = float_inputs[i+1]-load_cell[i];
-        dt = (millis() - prev_time[i])/1000.0; // dt in seconds for derivative gain
+        dt = (millis() - prev_time)/1000.0; // dt in seconds for derivative gain
         F_err_dot = (F_err-F_err_prev[i])/dt;
         // TODO: currently only in klaman version, not ra
-        integral[i] += F_err*dt;
+        if(abs(F_err) > 15.0){
+          integral[i] = 0;
+        }
+        else{
+          integral[i] += F_err*dt;
+        // integral[i] = 0;
+        }
 
         // Serial.println(String(float_inputs[i+1]));
         // Serial.println(String(load_cell[i]));
         // Serial.println(String(F_err_dot));
         // Serial.println(String(dt));
-        // Serial.println(String(ki[i]*integral[i]));
+        // Serial.println(String(ki[i]*integral[i]) + "," + String(kp[i]*F_err));
 
         Tau_m_adj = kp[i]*F_err + ki[i]*integral[i] + kd[i]*F_err_dot;
         // Tau_m_adj = kp[i]*F_err + integral[i] + kd[i]*F_err_dot;
@@ -254,35 +266,18 @@ void loop() {
         // dont want to enter control before we start ramping 
         torque_command[i] = torque_command[i] + force2Torque(Tau_m_adj);
 
-        // update F_err_prev and prev time
+        // update F_err_prev 
         F_err_prev[i] = F_err;
-        prev_time[i] = millis();
+        
       }
-
-      if (input1 != 2 && input1 != 1){
-      Serial.println("\n");
-      }
-
-
-      // TODO: alternate approach
-      // if (input1 != 2 && input1 != 1){
-      //   if(abs(load_cell[i]  - float_inputs[i+1]) > 0.25){
-      //     if (load_cell[i] < float_inputs[i+1]){
-      //       accumulator[i] += 0.01;
-      //       torque_command[i] += accumulator[i];
-      //     }
-      //     else{
-      //       accumulator[i] -= 0.01;
-      //       torque_command[i] += accumulator[i];
-      //     }
-      //   }
-      //   else{
-      //     torque_command[i] += accumulator[i];
-      //   }
-      // }
     }
 
-    // Serial.print("\n");
+    // update prev time
+    prev_time = millis();
+
+    // if (input1 != 2 && input1 != 1){
+    //   Serial.println("\n");
+    // }
     // Serial.println("Torque command: " + String(torque_command[0]) + ", " + String(torque_command[1]) + ", " + String(torque_command[2]) + "\n");
 
 
@@ -334,6 +329,9 @@ void loop() {
           }
           ramp_up_motor(float_inputs);
 
+          // update previous time after ramping
+          prev_time = millis();
+
           break;
         }
 
@@ -366,6 +364,8 @@ void loop() {
 
           CommandTorque();    // See below for the detailed function definition.
           // prints load cell outputs, depends on numbers of motors connected
+          // calculateCouplingFactors();
+
           switch (num_motors){
             case 1:
               Serial.println(String(millis() - t_init) + ", " + String(load_cell[0]) + "\n");
@@ -450,6 +450,7 @@ void readLoadCell(){
   double inputVoltage = 0;
   double force = 0;
   for (int i = 0; i<3; i++){
+    prev_load_cell[i] = load_cell[i];
     adcResult = analogRead(analogPins[i]);
     inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
     force = scale_factor[i]*((inputVoltage/10)*LOAD_CELL_MAX_FORCE) - offset[i];
@@ -620,3 +621,48 @@ bool CommandTorque() {
     return true;
 }
 //------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // Add this function to your code
+// void calculateCouplingFactors() {
+//   static double coupling_sum[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
+//   static int coupling_count[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
+ 
+//   // Calculate delta forces
+//   double delta_force[3];
+//   for (int i = 0; i < num_motors; i++) {
+//     delta_force[i] = load_cell[i] - prev_load_cell[i];
+//     prev_load_cell[i] = load_cell[i];
+//   }
+ 
+//   // Only process meaningful changes
+//   double threshold = 0.5; // lbf
+//   for (int i = 0; i < num_motors; i++) {
+//     if (abs(delta_force[i]) > threshold) {
+//       for (int j = 0; j < num_motors; j++) {
+//         if (i != j && abs(delta_force[j]) > threshold) {
+//           double instantaneous_coupling = delta_force[j] / delta_force[i];
+//           coupling_sum[i][j] += instantaneous_coupling;
+//           coupling_count[i][j]++;
+         
+//           // Print current coupling estimate
+//           if (coupling_count[i][j] % 10 == 0) {
+//             double avg_coupling = coupling_sum[i][j] / coupling_count[i][j];
+//             Serial.println("Coupling " + String(i) + "->" + String(j) + ": " + String(avg_coupling));
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
