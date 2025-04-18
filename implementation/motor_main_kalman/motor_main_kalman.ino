@@ -69,7 +69,7 @@
 // load cell parameters
 #define adcResolution 12
 #define LOAD_CELL_MAX_FORCE 220.462 // lbs
-double max_allowable_force = 100; // lbs, cutoff before absolute max load cell force
+double max_allowable_force = 210; // lbs, cutoff before absolute max load cell force
 const int analogPins[3] = {A10, A11, A12};
 // empirically determined linear scale factor of the load cell
 // double scale_factor[3] = {1.1316, 1.1316, 1.1316};
@@ -86,12 +86,14 @@ double accumulator[3] = {0.0,0.0,0.0};
 double ku=3.0;
 double pu=.110;
 
-double kp[3] = {ku/1.7, ku/1.7, ku/1.7};
+double kp[3] = {ku/1.55, ku/1.55, ku/1.55}; // prev 1.7
 double ki[3] = {24*pu/2, 24*pu/2, 24*pu/2}; // was pu/2
-double kd[3] = {pu/8, pu/8, pu/8};
+// double kd[3] = {pu/8, pu/8, pu/8};
+
+
 // double kp[3] = {0.0, 0.0, 0.0};
 // double ki[3] = {0.0, 0.0, 0.0}; // was pu/2
-// double kd[3] = {0.0, 0.0, 0.0};
+double kd[3] = {0.0, 0.0, 0.0};
 
 
 double F_err_prev[3] = {0.0, 0.0, 0.0};
@@ -366,6 +368,8 @@ void loop() {
           // prints load cell outputs, depends on numbers of motors connected
           // calculateCouplingFactors();
 
+          readLoadCell();
+
           switch (num_motors){
             case 1:
               Serial.println(String(millis() - t_init) + ", " + String(load_cell[0]) + "\n");
@@ -459,6 +463,8 @@ void readLoadCell(){
     // disable motors if load cell over 175 lbs
     if (load_cell[i] > max_allowable_force){
       Serial.print("excessive load cell force detected\n");
+      prev_input1 = 1;
+      input1 = 1;
       input[0] = '1';
       return;
     }
