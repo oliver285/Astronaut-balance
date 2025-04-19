@@ -1,5 +1,2 @@
-# Ignore all PNG images
-*.png
-
-# Ignore all Python bytecode files
-*.pyc
+# created by virtualenv automatically
+*

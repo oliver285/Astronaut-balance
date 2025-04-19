@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import os
 
 # Load CSV data
-name = "100lbs_5-10deg_0.25Hz_PID"
-df = pd.read_csv(r"Trimmed_Dynamic_Testing_Data/TRIMMED_tether_data_20250416_100lbs_5-10deg_0.25Hz_PID.csv")  # Replace with your actual CSV filename
+name = "90lbs_Zoscillations_test2"
+df = pd.read_csv(r"Trimmed_Dynamic_Testing_Data/TRIMMED_tether_data_20250416_90lbs_Zoscillations_test2.csv")  # Replace with your actual CSV filename
 
 # Define the folder path
 folder = 'plots/' + name
