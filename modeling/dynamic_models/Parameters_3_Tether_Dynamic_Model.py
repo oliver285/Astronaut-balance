@@ -1,7 +1,7 @@
 import numpy as np
 
 class Parameters:
-    mass = 200.0  # person's weight (lb)
+    mass = 100.0  # person's weight (lb)
     r = 6/12.0  # waist radius (ft)
     # waist_height = -2.5
     # mass = 200.0  # person's weight (lb)

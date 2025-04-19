@@ -94,11 +94,11 @@ def simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis='x'):
     # Generate tilting angles (converting to radians) for specified axis
     # 0.75 is the sway requirement in hertz
     if tilt_axis.lower() == 'x':
-        x_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.75 * time)  # ±10 degrees in x
+        x_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.5 * time)  # ±10 degrees in x
     elif tilt_axis.lower() == 'y':
-        y_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.75 * time)  # ±10 degrees in y
+        y_tilt = np.deg2rad(10) * np.sin(2 * np.pi * 0.5 * time)  # ±10 degrees in y
     elif tilt_axis.lower() == 'z':
-        z_trans = (-0.82021 * np.cos(2 * np.pi * 0.75 * time) + 0.82021)/2
+        z_trans = (-0.82021 * np.cos(2 * np.pi * 0.5 * time) + 0.82021)/2
     else:
         raise ValueError("tilt_axis must be either 'x', 'y', or 'z'")
     
@@ -357,7 +357,7 @@ def main():
     teth_length_error_range = 0
 
     # Time parameters
-    duration = 3.0  # seconds (5 complete cycles at 1Hz)
+    duration = 10.0  # seconds (5 complete cycles at 1Hz)
     dt = p.dt  # time step (essentially our sensor suite update rate)
     
     time_steps = int(duration/dt)+1
@@ -378,7 +378,7 @@ def main():
     t1 = 0
     
     # Set tilt axis ('x' or 'y')
-    tilt_axis = 'z'
+    tilt_axis = 'x'
     
     # Generate COM movement and tilt angles
     positions, tilt_angles = simulate_tilting_motion(time_steps, dt, initial_height, tilt_axis)
