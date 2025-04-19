@@ -1,2 +1,6 @@
-/.pyc
-/.png
+# Ignore all PNG images
+*.png
+
+# Ignore all Python bytecode files
+*.pyc
+
