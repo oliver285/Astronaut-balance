@@ -10,32 +10,42 @@ def main():
     p = params.three_teth_Parameters()
 
     # test data
-    df = pd.read_csv(r"TRIMMED_100lbs_Xoscillations_5deg_0.25Hz_PI.csv")
+    df = pd.read_csv("Trimmed_Dynamic_Testing_Data/TRIMMED_100lbs_Xoscillations_5deg_0.25Hz_PI.csv")
 
-    # Simulation parameters
-    mass = p.mass  # person's weight (lb)
-    initial_height = p.waist_height
-    # tether anchor loc 3x3 each row is the vector for each tether
-    # assuming anchor locations are radially 2 feet away from person 120 degrees away from each other
-    teth_anchor = p.teth_anchor
-    # attachment offset vector 3x3 each row is the vector for each tether
-    # assuming circular radius (pointing from tether attachment loc to COM
-    offset = p.offset
+    dt = 0.001
 
+    # Original time vector from test data
+    orig_time_vec = df['ResponseTime'].to_numpy() / 1000
 
-    # todo: time now from test data
-    time_vec = df['ResponseTime'].to_numpy()/1000
+    # Create a new time vector with 0.001 second intervals
+    new_time_vec = np.arange(orig_time_vec[0], orig_time_vec[-1], dt)
+
+    # Original position vector
+    orig_apex_vec = np.column_stack((df['XApex'], df['YApex'], df['ZApex']))
+
+    # Interpolate the position vector for the new time points
+    x_interp = np.interp(new_time_vec, orig_time_vec, orig_apex_vec[:, 0])
+    y_interp = np.interp(new_time_vec, orig_time_vec, orig_apex_vec[:, 1])
+    z_interp = np.interp(new_time_vec, orig_time_vec, orig_apex_vec[:, 2])
+
+    # Create the new interpolated apex vector
+    apex_vec = np.column_stack((x_interp, y_interp, z_interp))
+
+    # Use the new time vector for simulation
+    time_vec = new_time_vec
 
     # linear assumption for time it takes servo to reach new torque
-    reaction_t = 0.33  # seconds
+    reaction_t = 0.025  # seconds
     # parameters defining old force and time for linear convergence
     f = np.array([[0.0], [0.0], [0.0]])
     f_new = np.array([[0.0], [0.0], [0.0]])
     f_old = np.array([[0.0], [0.0], [0.0]])
     t1 = 0
 
-    # todo: position now from test data
-    apex_vec = np.column_stack((df['XApex'], df['YApex'], df['ZApex']))
+    force_update_rate = round(dt + 0.025,4)
+    update_vec = np.arange(time_vec[0], time_vec[-1]+force_update_rate, force_update_rate)
+    # separate iterator for force update
+    j = 0
 
     # Initialize arrays to store results
     f_errors = np.zeros(len(time_vec))
@@ -49,20 +59,31 @@ def main():
     f_old = eqns.calculate_tether_forces(apex_vec[0, :])
     # Run simulation
     for i in range(len(time_vec)):
-        # todo: from data
         apex = apex_vec[i, :]
 
-        f_new = eqns.calculate_tether_forces(apex)
-        t1 = time_vec[i]
-
-        # if torque is not reached yet
-        if (time_vec[i] < t1 + reaction_t):
-            f = ((f_new - f_old) / reaction_t) * (time_vec[i]) - ((f_new - f_old) / reaction_t) * t1 + f_old
-        # if we reach torque before next update
+        # update force at the start
+        if i == 0:
+            f = eqns.calculate_tether_forces(apex)
+            f_new = f
+            f_old = f
+            t1 = time_vec[i]
+            j += 1
+        # update force only at the prescribed update rate
+        elif time_vec[i] >= update_vec[j]:
+            # f = calculate_tether_forces(apex, mass, teth_anchor, offset)
+            f_new = eqns.calculate_tether_forces(apex)
+            f_old = f
+            t1 = time_vec[i]
+            j += 1
         else:
-            f = ((f_new - f_old) / reaction_t) * (t1 + reaction_t) - ((f_new - f_old) / reaction_t) * t1 + f_old
+            # if torque is not reached yet
+            if (time_vec[i] < t1 + reaction_t) & (time_vec[i] > force_update_rate):
+                f = ((f_new - f_old) / reaction_t) * (time_vec[i]) - ((f_new - f_old) / reaction_t) * t1 + f_old
 
-        f_old = f
+            # if we reach torque before next update
+            else:
+                f = ((f_new - f_old) / reaction_t) * (t1 + reaction_t) - ((f_new - f_old) / reaction_t) * t1 + f_old
+
 
         # Calculate errors
         f_err, ang_err, tether1_vec[i], tether2_vec[i], tether3_vec[i] = eqns.calculate_tether_error(apex, f)
@@ -78,11 +99,12 @@ def main():
     plt.show()
 
 
+
 def plot_simulation_results(time_vec, positions, f_errors, ang_errors,
                             tether1vec, tether2vec, tether3vec):
     # Set figure size and style for all plots
     plt.style.use('default')
-    figsize = (8, 4)
+    figsize = (10, 4)
 
     p = params.three_teth_Parameters()
 
