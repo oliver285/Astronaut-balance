@@ -8,7 +8,7 @@ class phidget_encoder:
         self.encoder = Encoder()
         self.encoder.setChannel(channel)
         self.encoder.openWaitForAttachment(5000)
-        self.encoder.setDataInterval(20)
+        self.encoder.setDataInterval(8)
         self.spool_radius = 1.07  # inches (1 inch spool rad and 0.7 inches for tether width)
         self.angle = 0.0
         self.length = 0.0
