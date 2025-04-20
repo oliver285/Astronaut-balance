@@ -1,5 +1,6 @@
 # Ignore all PNG images
 *.png
+*.mp4
 
 # Ignore all Python bytecode files
 *.pyc
