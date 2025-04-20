@@ -17,6 +17,8 @@ force1_data = []
 force2_data = []
 force3_data = []
 
+force1_in, force2_in, force3_in = 0, 0, 0
+
 latest_data = None  # Store the most recent valid data
 
 # Figure and axes setup
@@ -52,7 +54,7 @@ def update_plot(frame):
                 t, f1, f2, f3 = map(float, values)  # Convert to floats
 
                 # Append to lists
-                time_data.append(t)
+                time_data.append(t/1000)
                 force1_data.append(f1)
                 force2_data.append(f2)
                 force3_data.append(f3)
@@ -71,8 +73,11 @@ def update_plot(frame):
                 axs[2].cla()
 
                 axs[0].plot(time_data, force1_data, 'r', label="Force 1")
+                axs[0].axhline(y=force1_in, color='r', linestyle='--', label="Force 1 Ref")
                 axs[1].plot(time_data, force2_data, 'g', label="Force 2")
+                axs[1].axhline(y=force2_in, color='g', linestyle='--', label="Force 2 Ref")
                 axs[2].plot(time_data, force3_data, 'b', label="Force 3")
+                axs[2].axhline(y=force3_in, color='b', linestyle='--', label="Force 3 Ref")
 
                 axs[0].legend()
                 axs[1].legend()
@@ -83,17 +88,27 @@ def update_plot(frame):
                 axs[2].set_ylabel("Force 3 (lb)")
                 axs[2].set_xlabel("Time (s)")
 
-            except ValueError:
-                print(f"Invalid data received: {latest_data}")
+            except Exception as e:
+                print(f"Error: {e}")
 
 def send_commands():
     """Function to send commands over serial from user input."""
+    global force1_in, force2_in, force3_in
     while True:
         user_input = input("")
         if user_input.lower() == "exit":
             print("Exiting command input thread.")
             break
         ser.write((user_input + "\n").encode())
+
+        if user_input:
+            ref = user_input.split(",")
+            if len(ref) == 4:  # Ensure correct format
+                try:
+                    _, force1_in, force2_in, force3_in = map(float, ref)  # Convert to floats
+
+                except ValueError:
+                    print(f"Invalid data received: {user_input}")
 
 # Start a separate thread for user input
 command_thread = threading.Thread(target=send_commands, daemon=True)

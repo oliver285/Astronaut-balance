@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import serial
 import serial.tools.list_ports
-from three_Tether_Dynamic_Model_eqs import three_teth_model
+from three_Tether_Dynamic_Model_eqns import three_teth_model
 import sys
 import time
 import numpy as np

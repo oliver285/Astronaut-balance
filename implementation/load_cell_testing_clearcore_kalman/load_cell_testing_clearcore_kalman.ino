@@ -47,7 +47,7 @@ void loop() {
     // Put your main code here, it will run repeatedly:
 
     // A10, A11, or A12
-    int adcResult = analogRead(A10);
+    int adcResult = analogRead(A12);
     // Convert the reading to a voltage.
     double inputVoltage = 10.0 * adcResult / ((1 << adcResolution) - 1);
     
