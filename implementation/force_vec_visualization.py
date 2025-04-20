@@ -7,12 +7,20 @@ from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
 import three_Tether_Dynamic_Model_eqns
 import params
+import os
 
 eqns = three_Tether_Dynamic_Model_eqns.three_teth_model()
 p = params.three_teth_Parameters()
 
 # test data
-df = pd.read_csv("Trimmed_Dynamic_Testing_Data/TRIMMED_tether_data_20250416_90lbs_Zoscillations_test2.csv")
+name = "nocontroll_xoscillations"
+df = pd.read_csv("Trimmed_Dynamic_Testing_Data/TRIMMED_tether_data_20250416_nocontroll_xoscillations.csv")
+
+# Define the folder path
+folder = 'plots/' + name
+# Create the folder if it doesn't exist
+os.makedirs(folder, exist_ok=True)
+
 
 times = df['ResponseTime'].to_numpy() / 1000
 positions = np.column_stack((df['XApex'], df['YApex'], df['ZApex']))
@@ -205,9 +213,9 @@ plt.tight_layout()
 from matplotlib.animation import FFMpegWriter
 matplotlib.rcParams['animation.ffmpeg_path'] = r'C:\Users\Peter\OneDrive\Desktop\ffmpeg\ffmpeg-2024-11-18-git-970d57988d-full_build\bin\ffmpeg.exe'
 writer = FFMpegWriter(fps=25, metadata=dict(artist='Peter'), bitrate=1800)
-ani.save("plots/tether_animation.mp4", writer=writer)
+ani.save('plots/' + name + '/tether_animation' + name + '.mp4', writer=writer)
 
-print("Animation saved as tether_animation.mp4")
+print("Animation saved")
 
 
 plt.show()
